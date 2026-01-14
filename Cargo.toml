@@ -1,0 +1,60 @@
+[workspace]
+resolver = "2"
+members = [
+    "stamp-core",
+    "stamp-cli",
+    "stamp-py",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["msinclair"]
+license = "MIT"
+repository = "https://github.com/msinclair/rivet"
+description = "Rivet - Structural Alignment of Multiple Proteins"
+rust-version = "1.70"
+
+[workspace.dependencies]
+# Core dependencies
+nalgebra = "0.33"
+thiserror = "1.0"
+log = "0.4"
+
+# CLI dependencies
+clap = { version = "4.5", features = ["derive", "env"] }
+env_logger = "0.11"
+
+# Python bindings
+pyo3 = { version = "0.22", features = ["extension-module"] }
+numpy = "0.22"
+
+# Internal crates
+stamp-core = { path = "stamp-core" }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+# Allow common patterns
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+[profile.bench]
+lto = true
+codegen-units = 1

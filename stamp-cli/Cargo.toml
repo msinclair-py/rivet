@@ -1,0 +1,26 @@
+[package]
+name = "stamp-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Command-line interface for STAMP structural alignment"
+
+[[bin]]
+name = "stamp"
+path = "src/main.rs"
+
+[dependencies]
+stamp-core = { workspace = true }
+clap = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }
+
+[lints]
+workspace = true
+
+[features]
+default = []
+parallel = ["stamp-core/parallel"]

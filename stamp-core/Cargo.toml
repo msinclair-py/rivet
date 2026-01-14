@@ -1,0 +1,34 @@
+[package]
+name = "stamp-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Core library for STAMP structural alignment of multiple proteins"
+
+[dependencies]
+nalgebra = { workspace = true }
+thiserror = { workspace = true }
+log = { workspace = true }
+
+[dev-dependencies]
+criterion = "0.5"
+proptest = "1.5"
+
+[lints]
+workspace = true
+
+[[bench]]
+name = "alignment"
+harness = false
+
+[features]
+default = []
+simd = []
+parallel = ["rayon"]
+
+[dependencies.rayon]
+version = "1.10"
+optional = true
