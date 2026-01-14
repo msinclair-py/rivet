@@ -186,7 +186,7 @@ impl PyDomain {
         }
 
         let arr = ndarray::Array2::from_shape_vec((n, 3), coords).unwrap();
-        arr.to_pyarray_bound(py)
+        arr.to_pyarray(py)
     }
 
     /// Sets C-alpha coordinates from numpy array (N x 3).
@@ -528,7 +528,7 @@ impl PyTransform {
             }
         }
         let arr = ndarray::Array2::from_shape_vec((3, 3), flat).unwrap();
-        arr.to_pyarray_bound(py)
+        arr.to_pyarray(py)
     }
 
     /// Returns the translation vector as numpy array.
@@ -539,7 +539,7 @@ impl PyTransform {
             self.inner.translation.y,
             self.inner.translation.z,
         ]);
-        arr.to_pyarray_bound(py)
+        arr.to_pyarray(py)
     }
 
     /// Returns the full 4x4 transformation matrix.
@@ -562,7 +562,7 @@ impl PyTransform {
         matrix[15] = 1.0;
 
         let arr = ndarray::Array2::from_shape_vec((4, 4), matrix).unwrap();
-        arr.to_pyarray_bound(py)
+        arr.to_pyarray(py)
     }
 
     /// Applies this transformation to coordinates.
@@ -595,7 +595,7 @@ impl PyTransform {
         }
 
         let out_arr = ndarray::Array2::from_shape_vec((n, 3), result).unwrap();
-        Ok(out_arr.to_pyarray_bound(py))
+        Ok(out_arr.to_pyarray(py))
     }
 
     /// Returns the inverse transformation.
@@ -666,7 +666,7 @@ impl PyAlignmentResult {
             }
         }
         let arr = ndarray::Array2::from_shape_vec((3, 3), flat).unwrap();
-        arr.to_pyarray_bound(py)
+        arr.to_pyarray(py)
     }
 
     /// Returns the translation vector as numpy array (3,).
@@ -676,7 +676,7 @@ impl PyAlignmentResult {
             self.transform.translation.y,
             self.transform.translation.z,
         ]);
-        arr.to_pyarray_bound(py)
+        arr.to_pyarray(py)
     }
 
     /// Returns the 4x4 transformation matrix.
@@ -695,7 +695,7 @@ impl PyAlignmentResult {
         matrix[15] = 1.0;
 
         let arr = ndarray::Array2::from_shape_vec((4, 4), matrix).unwrap();
-        arr.to_pyarray_bound(py)
+        arr.to_pyarray(py)
     }
 
     /// Returns the alignment path as list of (i, j) tuples.
@@ -734,7 +734,7 @@ impl PyAlignmentResult {
         }
 
         let out_arr = ndarray::Array2::from_shape_vec((n, 3), result).unwrap();
-        Ok(out_arr.to_pyarray_bound(py))
+        Ok(out_arr.to_pyarray(py))
     }
 
     /// Returns the transformed coordinates of the mobile domain.
@@ -754,7 +754,7 @@ impl PyAlignmentResult {
         }
 
         let arr = ndarray::Array2::from_shape_vec((n, 3), coords).unwrap();
-        arr.to_pyarray_bound(py)
+        arr.to_pyarray(py)
     }
 
     fn __repr__(&self) -> String {
@@ -1161,7 +1161,7 @@ fn distance_matrix<'py>(
     let flat: Vec<f64> = dist.into_iter().flatten().collect();
 
     let arr = ndarray::Array2::from_shape_vec((m, n), flat).unwrap();
-    Ok(arr.to_pyarray_bound(py))
+    Ok(arr.to_pyarray(py))
 }
 
 /// Computes centroid of a coordinate set.

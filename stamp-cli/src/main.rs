@@ -630,7 +630,7 @@ fn run_treewise(
     }
 
     // Write individual transformed structures
-    if !args.output_pdb.is_some() {
+    if args.output_pdb.is_none() {
         for (i, domain) in domains.iter().enumerate() {
             let output_path = format!("{}_{}.pdb", args.output_prefix, domain.id);
             write_pdb(&output_path, domain, Some(&result.transforms[i]))?;

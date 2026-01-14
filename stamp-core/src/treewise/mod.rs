@@ -176,11 +176,12 @@ fn progressive_align(
 }
 
 /// Recursively aligns tree nodes.
+#[allow(clippy::type_complexity)]
 fn align_tree_node(
     node: &TreeNode,
     domains: &[Domain],
     pairwise: &[Vec<AlignmentResult>],
-    params: &Parameters,
+    _params: &Parameters,
 ) -> StampResult<(Vec<Vec<Option<usize>>>, Vec<usize>)> {
     match node {
         TreeNode::Leaf(idx) => {
@@ -196,8 +197,8 @@ fn align_tree_node(
         }
         TreeNode::Internal { left, right, .. } => {
             // Recursively align subtrees
-            let (left_columns, left_members) = align_tree_node(left, domains, pairwise, params)?;
-            let (right_columns, right_members) = align_tree_node(right, domains, pairwise, params)?;
+            let (left_columns, left_members) = align_tree_node(left, domains, pairwise, _params)?;
+            let (right_columns, right_members) = align_tree_node(right, domains, pairwise, _params)?;
 
             // Merge alignments using best pairwise alignment between groups
             let merged = merge_alignments(

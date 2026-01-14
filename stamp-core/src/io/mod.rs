@@ -526,7 +526,7 @@ pub fn parse_pdb_with_options<P: AsRef<Path>>(
         let is_atom = line.starts_with("ATOM");
         let is_hetatm = line.starts_with("HETATM");
 
-        if !is_atom && !(options.include_hetatm && is_hetatm) {
+        if !(is_atom || options.include_hetatm && is_hetatm) {
             continue;
         }
 

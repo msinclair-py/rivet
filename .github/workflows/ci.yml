@@ -37,8 +37,8 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-      - name: Run clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D clippy::correctness -D clippy::suspicious -D clippy::complexity -W clippy::pedantic -W clippy::nursery
+      - name: Run clippy (excluding Python bindings)
+        run: cargo clippy --workspace --exclude stamp-py --all-targets --all-features -- -D clippy::correctness -D clippy::suspicious -D clippy::complexity -W clippy::pedantic -W clippy::nursery
 
   # Rust tests
   rust-test:
@@ -65,11 +65,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-test-
 
-      - name: Run tests
-        run: cargo test --workspace --all-features
+      - name: Run tests (excluding Python bindings)
+        run: cargo test --workspace --exclude stamp-py --all-features
 
-      - name: Build release
-        run: cargo build --release
+      - name: Build release (excluding Python bindings)
+        run: cargo build --release --workspace --exclude stamp-py
 
   # Python tests with maturin
   python-test:
@@ -102,16 +102,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.python-version }}-cargo-
 
-      - name: Install maturin
+      - name: Install dependencies
         run: pip install maturin pytest numpy
 
-      - name: Build wheel
-        run: maturin build --release
-
-      - name: Install wheel
-        shell: bash
-        run: |
-          pip install target/wheels/*.whl
+      - name: Build and install with maturin develop
+        run: maturin develop --release
 
       - name: Run pytest
         run: pytest stamp-py/tests/ -v

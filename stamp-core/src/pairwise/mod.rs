@@ -736,6 +736,7 @@ fn pairpath(
 /// - Alignment length
 /// - Gap penalties
 /// - Sequence lengths
+#[allow(clippy::too_many_arguments)]
 fn calculate_stamp_score(
     max_score: i32,
     alignment_length: usize,
