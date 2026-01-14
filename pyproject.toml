@@ -7,7 +7,7 @@ name = "rivet-rs"
 version = "0.1.0"
 description = "Rivet - Structural Alignment of Multiple Proteins"
 readme = "README.md"
-license = { text = "MIT" }
+license-file = "LICENSE"
 requires-python = ">=3.9"
 authors = [
     { name = "msinclair" }
