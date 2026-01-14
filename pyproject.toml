@@ -4,10 +4,10 @@ build-backend = "maturin"
 
 [project]
 name = "rivet-rs"
-version = "0.1.1"
+version = "0.1.2"
 description = "Rivet - Structural Alignment of Multiple Proteins"
 readme = "README.md"
-license-file = "LICENSE"
+license = "MIT"
 requires-python = ">=3.9"
 authors = [
     { name = "msinclair" }
