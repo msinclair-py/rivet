@@ -1923,9 +1923,24 @@ pub fn transform_pdb<P: AsRef<Path>, Q: AsRef<Path>>(
 
             if should_transform {
                 // Parse coordinates (columns 31-38, 39-46, 47-54, 0-indexed: 30-38, 38-46, 46-54)
-                let x: f64 = line.get(30..38).unwrap_or("0.0").trim().parse().unwrap_or(0.0);
-                let y: f64 = line.get(38..46).unwrap_or("0.0").trim().parse().unwrap_or(0.0);
-                let z: f64 = line.get(46..54).unwrap_or("0.0").trim().parse().unwrap_or(0.0);
+                let x: f64 = line
+                    .get(30..38)
+                    .unwrap_or("0.0")
+                    .trim()
+                    .parse()
+                    .unwrap_or(0.0);
+                let y: f64 = line
+                    .get(38..46)
+                    .unwrap_or("0.0")
+                    .trim()
+                    .parse()
+                    .unwrap_or(0.0);
+                let z: f64 = line
+                    .get(46..54)
+                    .unwrap_or("0.0")
+                    .trim()
+                    .parse()
+                    .unwrap_or(0.0);
 
                 // Apply transformation
                 let coord = Coord3::new(x, y, z);

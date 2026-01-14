@@ -907,8 +907,9 @@ impl PyMultipleAlignmentResult {
             let output_path = dir.join(format!("{}{}.pdb", prefix, basename));
             let output_str = output_path.to_string_lossy().to_string();
 
-            transform_pdb(source, &output_path, &full_transform, None)
-                .map_err(|e| PyIOError::new_err(format!("Failed to write {}: {}", output_str, e)))?;
+            transform_pdb(source, &output_path, &full_transform, None).map_err(|e| {
+                PyIOError::new_err(format!("Failed to write {}: {}", output_str, e))
+            })?;
 
             output_paths.push(output_str);
         }
@@ -1165,8 +1166,15 @@ fn align_pdbs(
         if i == reference_index {
             aligned_domains.push(domain.clone());
         } else {
-            let scan_result = scan_pair(&domains[reference_index], domain, &scan_config, &core_params)
-                .map_err(|e| PyValueError::new_err(format!("Pre-alignment failed for {}: {}", pdb_files[i], e)))?;
+            let scan_result = scan_pair(
+                &domains[reference_index],
+                domain,
+                &scan_config,
+                &core_params,
+            )
+            .map_err(|e| {
+                PyValueError::new_err(format!("Pre-alignment failed for {}: {}", pdb_files[i], e))
+            })?;
 
             pre_transforms[i] = scan_result.transform.clone();
 
