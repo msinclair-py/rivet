@@ -38,7 +38,9 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run clippy (excluding Python bindings)
-        run: cargo clippy --workspace --exclude stamp-py --all-targets --all-features -- -D clippy::correctness -D clippy::suspicious -D clippy::complexity -W clippy::pedantic -W clippy::nursery
+        run: cargo clippy --workspace --exclude stamp-py --all-targets --all-features
+        env:
+          RUSTFLAGS: ""  # Use workspace lints from Cargo.toml instead of global -D warnings
 
   # Rust tests
   rust-test:
