@@ -105,36 +105,19 @@ jobs:
       - name: Install dependencies
         run: pip install maturin pytest numpy
 
-      - name: Build and install with maturin develop
-        run: maturin develop --release
+      - name: Build wheel
+        run: maturin build --release --interpreter python
+
+      - name: Install wheel (Unix)
+        if: runner.os != 'Windows'
+        run: pip install target/wheels/*.whl
+
+      - name: Install wheel (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $wheel = Get-ChildItem target/wheels/*.whl | Select-Object -First 1
+          pip install $wheel.FullName
 
       - name: Run pytest
         run: pytest stamp-py/tests/ -v
-
-  # Build wheels for all platforms (on PRs to main)
-  build-wheels:
-    name: Build Wheels (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    if: github.event_name == 'pull_request'
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Build wheels
-        uses: PyO3/maturin-action@v1
-        with:
-          args: --release --out dist
-          manylinux: auto
-
-      - name: Upload wheels
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheels-${{ matrix.os }}
-          path: dist/*.whl

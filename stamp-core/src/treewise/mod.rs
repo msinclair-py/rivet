@@ -198,7 +198,8 @@ fn align_tree_node(
         TreeNode::Internal { left, right, .. } => {
             // Recursively align subtrees
             let (left_columns, left_members) = align_tree_node(left, domains, pairwise, _params)?;
-            let (right_columns, right_members) = align_tree_node(right, domains, pairwise, _params)?;
+            let (right_columns, right_members) =
+                align_tree_node(right, domains, pairwise, _params)?;
 
             // Merge alignments using best pairwise alignment between groups
             let merged = merge_alignments(
