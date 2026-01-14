@@ -20,6 +20,7 @@ Classes:
     ScanHit: Database scan hit
 
 Functions:
+    align_pdbs: High-level API to align PDB files and write full output (recommended)
     pairwise_align: Perform pairwise structural alignment
     multiple_align: Perform multiple structure alignment
     scan_database: Scan query against database
@@ -27,6 +28,7 @@ Functions:
     superpose: Compute optimal superposition
     distance_matrix: Compute pairwise distances
     centroid: Compute centroid of coordinates
+    transform_pdb_file: Transform entire PDB file (all atoms) with alignment
 """
 
 # Re-export everything from the Rust extension
@@ -38,6 +40,7 @@ from rivet.rivet import (
     ScanHit,
     Transform,
     __version__,
+    align_pdbs,
     centroid,
     compute_rmsd,
     distance_matrix,
@@ -45,6 +48,7 @@ from rivet.rivet import (
     pairwise_align,
     scan_database,
     superpose,
+    transform_pdb_file,
 )
 
 __all__ = [
@@ -58,6 +62,7 @@ __all__ = [
     "MultipleAlignmentResult",
     "ScanHit",
     # Functions
+    "align_pdbs",
     "pairwise_align",
     "multiple_align",
     "scan_database",
@@ -65,4 +70,5 @@ __all__ = [
     "superpose",
     "distance_matrix",
     "centroid",
+    "transform_pdb_file",
 ]

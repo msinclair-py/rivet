@@ -1,2 +1,6 @@
 target/
 .claude/
+*.pdb
+aligned_structures/
+detailed_aligned/
+test_pdbs/

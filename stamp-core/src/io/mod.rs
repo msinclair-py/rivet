@@ -1849,6 +1849,120 @@ pub fn one_to_three(one: char) -> &'static str {
     }
 }
 
+/// Transforms an entire PDB file by applying a rigid body transformation to all atom coordinates.
+///
+/// Unlike `write_pdb` which only outputs C-alpha atoms, this function reads the original
+/// PDB file and transforms ALL atoms (ATOM and HETATM records), preserving all other
+/// information in the file (HEADER, REMARK, CONECT, etc.).
+///
+/// This is useful when you want to output the full structure (with side chains, waters,
+/// ligands, etc.) after computing an alignment based on C-alpha atoms.
+///
+/// # Arguments
+///
+/// * `input_path` - Path to the input PDB file
+/// * `output_path` - Path to write the transformed PDB file
+/// * `transform` - The rigid body transformation to apply
+/// * `chain` - Optional chain filter; if Some, only transform atoms from this chain
+///
+/// # Errors
+///
+/// Returns an error if the input file cannot be read or output file cannot be written.
+///
+/// # Example
+///
+/// ```ignore
+/// use stamp_core::io::transform_pdb;
+/// use stamp_core::types::Transform;
+///
+/// // After computing alignment
+/// let transform = result.transform;
+///
+/// // Transform the entire PDB file
+/// transform_pdb("input.pdb", "output_aligned.pdb", &transform, None)?;
+/// ```
+pub fn transform_pdb<P: AsRef<Path>, Q: AsRef<Path>>(
+    input_path: P,
+    output_path: Q,
+    transform: &Transform,
+    chain: Option<char>,
+) -> StampResult<()> {
+    let input_path = input_path.as_ref();
+    let output_path = output_path.as_ref();
+
+    let file = File::open(input_path)?;
+    let reader = BufReader::new(file);
+    let mut output = File::create(output_path)?;
+
+    let mut atoms_transformed = 0usize;
+    let mut first_model_done = false;
+
+    for line in reader.lines() {
+        let line = line?;
+
+        // Handle MODEL/ENDMDL for NMR structures - only transform first model
+        if line.starts_with("ENDMDL") {
+            first_model_done = true;
+            writeln!(output, "{}", line)?;
+            continue;
+        }
+
+        // Skip atoms after first model ends (for NMR structures with multiple models)
+        if first_model_done && (line.starts_with("ATOM") || line.starts_with("HETATM")) {
+            continue;
+        }
+
+        // Check if this is an ATOM or HETATM record
+        let is_atom = line.starts_with("ATOM");
+        let is_hetatm = line.starts_with("HETATM");
+
+        if (is_atom || is_hetatm) && line.len() >= 54 {
+            // Check chain filter if specified
+            let line_chain = line.chars().nth(21).unwrap_or(' ');
+            let should_transform = chain.map_or(true, |c| line_chain == c);
+
+            if should_transform {
+                // Parse coordinates (columns 31-38, 39-46, 47-54, 0-indexed: 30-38, 38-46, 46-54)
+                let x: f64 = line.get(30..38).unwrap_or("0.0").trim().parse().unwrap_or(0.0);
+                let y: f64 = line.get(38..46).unwrap_or("0.0").trim().parse().unwrap_or(0.0);
+                let z: f64 = line.get(46..54).unwrap_or("0.0").trim().parse().unwrap_or(0.0);
+
+                // Apply transformation
+                let coord = Coord3::new(x, y, z);
+                let transformed = transform.apply(&coord);
+
+                // Reconstruct the line with new coordinates
+                // PDB format: coordinates are in columns 31-54 (8.3 format each)
+                let prefix = &line[..30];
+                let suffix = if line.len() > 54 { &line[54..] } else { "" };
+
+                writeln!(
+                    output,
+                    "{}{:8.3}{:8.3}{:8.3}{}",
+                    prefix, transformed.x, transformed.y, transformed.z, suffix
+                )?;
+
+                atoms_transformed += 1;
+            } else {
+                // Chain doesn't match filter - write unchanged
+                writeln!(output, "{}", line)?;
+            }
+        } else {
+            // Not an ATOM/HETATM record or line too short - write unchanged
+            writeln!(output, "{}", line)?;
+        }
+    }
+
+    log::debug!(
+        "Transformed {} atoms from {} to {}",
+        atoms_transformed,
+        input_path.display(),
+        output_path.display()
+    );
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

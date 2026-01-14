@@ -23,7 +23,7 @@
 use numpy::{PyArray1, PyArray2, PyReadonlyArray2, ToPyArray};
 use pyo3::exceptions::{PyIOError, PyValueError};
 use pyo3::prelude::*;
-use stamp_core::io::{parse_dssp, parse_pdb, write_pdb};
+use stamp_core::io::{parse_dssp, parse_pdb, transform_pdb, write_pdb};
 use stamp_core::treewise::multiple_align as core_multiple_align;
 use stamp_core::types::{
     Coord3, Domain as CoreDomain, Parameters as CoreParameters, Residue, Transform as CoreTransform,
@@ -111,14 +111,35 @@ impl PyDomain {
 
     /// Writes the domain to a PDB file.
     ///
+    /// By default, writes the FULL structure (all atoms) by transforming the
+    /// original PDB file. Set `full=False` to write only C-alpha atoms.
+    ///
     /// Args:
     ///     path: Output file path.
     ///     transform: Optional transformation to apply before writing.
-    #[pyo3(signature = (path, transform=None))]
-    fn to_pdb(&self, path: &str, transform: Option<&PyTransform>) -> PyResult<()> {
-        let trans = transform.map(|t| t.inner.clone());
-        write_pdb(path, &self.inner, trans.as_ref())
-            .map_err(|e| PyIOError::new_err(format!("Failed to write PDB: {}", e)))
+    ///     full: If True (default), writes all atoms from original PDB.
+    ///           If False, writes only C-alpha atoms.
+    #[pyo3(signature = (path, transform=None, full=true))]
+    fn to_pdb(&self, path: &str, transform: Option<&PyTransform>, full: bool) -> PyResult<()> {
+        if full && !self.inner.pdb_file.is_empty() {
+            // Full output: transform original PDB with all atoms
+            let t = transform
+                .map(|t| t.inner.clone())
+                .unwrap_or_else(CoreTransform::identity);
+            transform_pdb(&self.inner.pdb_file, path, &t, Some(self.inner.chain))
+                .map_err(|e| PyIOError::new_err(format!("Failed to write PDB: {}", e)))
+        } else {
+            // C-alpha only output (or no source file available)
+            let trans = transform.map(|t| t.inner.clone());
+            write_pdb(path, &self.inner, trans.as_ref())
+                .map_err(|e| PyIOError::new_err(format!("Failed to write PDB: {}", e)))
+        }
+    }
+
+    /// Returns the source PDB file path.
+    #[getter]
+    fn pdb_file(&self) -> &str {
+        &self.inner.pdb_file
     }
 
     /// Returns the domain identifier.
@@ -476,13 +497,19 @@ impl PyTransform {
     #[staticmethod]
     fn from_matrix(
         rotation: PyReadonlyArray2<f64>,
-        translation: PyReadonlyArray2<f64>,
+        translation: numpy::PyReadonlyArray1<f64>,
     ) -> PyResult<Self> {
         let rot = rotation.as_array();
         let trans = translation.as_array();
 
         if rot.shape() != [3, 3] {
             return Err(PyValueError::new_err("Rotation must be 3x3 matrix"));
+        }
+
+        if trans.len() != 3 {
+            return Err(PyValueError::new_err(
+                "Translation must be 3-element vector",
+            ));
         }
 
         let rotation_matrix = stamp_core::types::RotationMatrix::new(
@@ -497,18 +524,7 @@ impl PyTransform {
             rot[[2, 2]],
         );
 
-        // Handle both (3,) and (3,1) or (1,3) shapes
-        let (tx, ty, tz) = if trans.shape()[0] >= 3 {
-            (trans[[0, 0]], trans[[1, 0]], trans[[2, 0]])
-        } else if trans.shape().len() == 1 || trans.shape()[1] >= 3 {
-            (trans[[0, 0]], trans[[0, 1]], trans[[0, 2]])
-        } else {
-            return Err(PyValueError::new_err(
-                "Translation must be 3-element vector",
-            ));
-        };
-
-        let translation_vec = stamp_core::types::Vec3::new(tx, ty, tz);
+        let translation_vec = stamp_core::types::Vec3::new(trans[0], trans[1], trans[2]);
 
         Ok(Self {
             inner: CoreTransform {
@@ -784,8 +800,12 @@ pub struct PyMultipleAlignmentResult {
     /// Number of core positions (all structures present).
     #[pyo3(get)]
     n_core: usize,
-    /// Transformations for each domain.
+    /// MSA refinement transformations for each domain.
     transforms: Vec<CoreTransform>,
+    /// Pre-alignment transformations (from scan/initial alignment).
+    pre_transforms: Vec<CoreTransform>,
+    /// Source PDB file paths for full output.
+    source_files: Vec<String>,
     /// Core position indices.
     core_positions: Vec<usize>,
     /// Alignment columns.
@@ -824,6 +844,76 @@ impl PyMultipleAlignmentResult {
     #[getter]
     fn columns(&self) -> Vec<Vec<Option<usize>>> {
         self.columns.clone()
+    }
+
+    /// Returns the full composed transforms (pre-alignment + MSA refinement).
+    ///
+    /// These transforms can be applied directly to the original PDB files
+    /// to get the final aligned structures.
+    #[getter]
+    fn full_transforms(&self) -> Vec<PyTransform> {
+        self.pre_transforms
+            .iter()
+            .zip(self.transforms.iter())
+            .map(|(pre, msa)| PyTransform {
+                inner: msa.compose(pre),
+            })
+            .collect()
+    }
+
+    /// Writes all aligned structures as full PDB files to the specified directory.
+    ///
+    /// Args:
+    ///     output_dir: Directory to write aligned PDB files.
+    ///     prefix: Optional prefix for output filenames (default "aligned_").
+    ///
+    /// Returns:
+    ///     List of output file paths.
+    #[pyo3(signature = (output_dir, prefix=None))]
+    fn write_all(&self, output_dir: &str, prefix: Option<&str>) -> PyResult<Vec<String>> {
+        let prefix = prefix.unwrap_or("aligned_");
+        let dir = std::path::Path::new(output_dir);
+
+        // Create output directory if it doesn't exist
+        std::fs::create_dir_all(dir)
+            .map_err(|e| PyIOError::new_err(format!("Failed to create output directory: {}", e)))?;
+
+        let mut output_paths = Vec::new();
+
+        for (i, ((pre, msa), source)) in self
+            .pre_transforms
+            .iter()
+            .zip(self.transforms.iter())
+            .zip(self.source_files.iter())
+            .enumerate()
+        {
+            if source.is_empty() {
+                return Err(PyValueError::new_err(format!(
+                    "No source PDB file for domain {}",
+                    i
+                )));
+            }
+
+            // Compose transforms: MSA refinement * pre-alignment
+            let full_transform = msa.compose(pre);
+
+            // Generate output filename from source basename
+            let source_path = std::path::Path::new(source);
+            let default_name = format!("domain{}", i);
+            let basename = source_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or(&default_name);
+            let output_path = dir.join(format!("{}{}.pdb", prefix, basename));
+            let output_str = output_path.to_string_lossy().to_string();
+
+            transform_pdb(source, &output_path, &full_transform, None)
+                .map_err(|e| PyIOError::new_err(format!("Failed to write {}: {}", output_str, e)))?;
+
+            output_paths.push(output_str);
+        }
+
+        Ok(output_paths)
     }
 
     fn __repr__(&self) -> String {
@@ -956,6 +1046,8 @@ fn pairwise_align(
 /// Args:
 ///     domains: List of Domain objects to align.
 ///     params: Optional alignment parameters.
+///     pre_transforms: Optional list of pre-alignment transforms. If provided,
+///                     these will be composed with MSA transforms for full output.
 ///
 /// Returns:
 ///     MultipleAlignmentResult with transformations and alignment.
@@ -963,10 +1055,11 @@ fn pairwise_align(
 /// Raises:
 ///     ValueError: If alignment fails or fewer than 2 domains provided.
 #[pyfunction]
-#[pyo3(name = "multiple_align", signature = (domains, params=None))]
+#[pyo3(name = "multiple_align", signature = (domains, params=None, pre_transforms=None))]
 fn multiple_align(
     domains: Vec<PyRef<PyDomain>>,
     params: Option<&PyParameters>,
+    pre_transforms: Option<Vec<PyRef<PyTransform>>>,
 ) -> PyResult<PyMultipleAlignmentResult> {
     if domains.len() < 2 {
         return Err(PyValueError::new_err(
@@ -977,6 +1070,15 @@ fn multiple_align(
     let core_domains: Vec<CoreDomain> = domains.iter().map(|d| d.inner.clone()).collect();
     let core_params = params.map(|p| p.inner.clone()).unwrap_or_default();
 
+    // Collect source files for full PDB output
+    let source_files: Vec<String> = domains.iter().map(|d| d.inner.pdb_file.clone()).collect();
+
+    // Get pre-transforms (default to identity if not provided)
+    let pre_trans: Vec<CoreTransform> = match pre_transforms {
+        Some(transforms) => transforms.iter().map(|t| t.inner.clone()).collect(),
+        None => vec![CoreTransform::identity(); domains.len()],
+    };
+
     let result = core_multiple_align(&core_domains, &core_params)
         .map_err(|e| PyValueError::new_err(format!("Multiple alignment failed: {}", e)))?;
 
@@ -986,9 +1088,118 @@ fn multiple_align(
         n_columns: result.n_columns(),
         n_core: result.n_core(),
         transforms: result.transforms,
+        pre_transforms: pre_trans,
+        source_files,
         core_positions: result.core_positions,
         columns: result.columns,
     })
+}
+
+/// Aligns multiple structures with automatic pre-alignment and full PDB output.
+///
+/// This is the recommended high-level API that handles:
+/// - Initial pre-alignment (scan mode for structures in different coordinate frames)
+/// - Multiple structure alignment
+/// - Automatic transform composition
+/// - Full PDB output with all atoms
+///
+/// Args:
+///     pdb_files: List of PDB file paths to align.
+///     output_dir: Directory for output aligned PDB files.
+///     params: Optional alignment parameters.
+///     chain: Optional chain to extract from each PDB (default: first chain found).
+///     reference_index: Index of reference structure (default 0).
+///
+/// Returns:
+///     MultipleAlignmentResult with full transforms and output file paths.
+#[pyfunction]
+#[pyo3(name = "align_pdbs", signature = (pdb_files, output_dir, params=None, chain=None, reference_index=0))]
+fn align_pdbs(
+    pdb_files: Vec<String>,
+    output_dir: &str,
+    params: Option<&PyParameters>,
+    chain: Option<char>,
+    reference_index: usize,
+) -> PyResult<PyMultipleAlignmentResult> {
+    use stamp_core::scan::{scan_pair, ScanConfig};
+
+    if pdb_files.len() < 2 {
+        return Err(PyValueError::new_err("Need at least 2 PDB files"));
+    }
+
+    if reference_index >= pdb_files.len() {
+        return Err(PyValueError::new_err(format!(
+            "Reference index {} out of range for {} structures",
+            reference_index,
+            pdb_files.len()
+        )));
+    }
+
+    let core_params = params.map(|p| p.inner.clone()).unwrap_or_default();
+
+    // Load all domains
+    let mut domains: Vec<CoreDomain> = Vec::new();
+    for pdb_file in &pdb_files {
+        let domain = parse_pdb(pdb_file, chain)
+            .map_err(|e| PyValueError::new_err(format!("Failed to parse {}: {}", pdb_file, e)))?;
+        domains.push(domain);
+    }
+
+    // Pre-align all structures to reference using scan mode
+    let mut pre_transforms: Vec<CoreTransform> = vec![CoreTransform::identity(); domains.len()];
+    let mut aligned_domains: Vec<CoreDomain> = Vec::new();
+
+    let scan_config = ScanConfig {
+        slide: 5,
+        n_passes: core_params.n_passes,
+        e1: core_params.e1,
+        e2: core_params.e2,
+        gap_penalty: core_params.pen_gap,
+        cutoff: core_params.cutoff_dist,
+        max_iter: core_params.max_iter,
+        convergence: core_params.convergence,
+        ..ScanConfig::default()
+    };
+
+    for (i, domain) in domains.iter().enumerate() {
+        if i == reference_index {
+            aligned_domains.push(domain.clone());
+        } else {
+            let scan_result = scan_pair(&domains[reference_index], domain, &scan_config, &core_params)
+                .map_err(|e| PyValueError::new_err(format!("Pre-alignment failed for {}: {}", pdb_files[i], e)))?;
+
+            pre_transforms[i] = scan_result.transform.clone();
+
+            // Apply transform to get pre-aligned coordinates
+            let mut aligned = domain.clone();
+            for residue in &mut aligned.residues {
+                residue.ca_coord = scan_result.transform.apply(&residue.ca_coord);
+            }
+            aligned_domains.push(aligned);
+        }
+    }
+
+    // Run multiple alignment on pre-aligned structures
+    let result = core_multiple_align(&aligned_domains, &core_params)
+        .map_err(|e| PyValueError::new_err(format!("Multiple alignment failed: {}", e)))?;
+
+    // Create result with pre-transforms and source files
+    let msa_result = PyMultipleAlignmentResult {
+        avg_rmsd: result.avg_rmsd,
+        score: result.score,
+        n_columns: result.n_columns(),
+        n_core: result.n_core(),
+        transforms: result.transforms,
+        pre_transforms,
+        source_files: pdb_files,
+        core_positions: result.core_positions,
+        columns: result.columns,
+    };
+
+    // Write all aligned structures
+    let _output_files = msa_result.write_all(output_dir, None)?;
+
+    Ok(msa_result)
 }
 
 /// Scans a query structure against a database.
@@ -1000,11 +1211,12 @@ fn multiple_align(
 ///     score_cutoff: Minimum score for reporting hits (default 0.0).
 ///     max_hits: Maximum number of hits to return (default 100).
 ///     quick: Use quick alignment mode (default False).
+///     scan_mode: Use sliding window scan for structures in different coordinate frames (default True).
 ///
 /// Returns:
 ///     List of ScanHit objects sorted by score.
 #[pyfunction]
-#[pyo3(name = "scan_database", signature = (query, targets, params=None, score_cutoff=0.0, max_hits=100, quick=false))]
+#[pyo3(name = "scan_database", signature = (query, targets, params=None, score_cutoff=0.0, max_hits=100, quick=false, scan_mode=true))]
 fn scan_database(
     query: &PyDomain,
     targets: Vec<PyRef<PyDomain>>,
@@ -1012,6 +1224,7 @@ fn scan_database(
     score_cutoff: f64,
     max_hits: usize,
     quick: bool,
+    scan_mode: bool,
 ) -> PyResult<Vec<PyScanHit>> {
     let core_params = params.map(|p| p.inner.clone()).unwrap_or_default();
 
@@ -1019,6 +1232,7 @@ fn scan_database(
     scanner.set_quick_scan(quick);
     scanner.set_score_threshold(score_cutoff);
     scanner.set_max_hits(max_hits);
+    scanner.set_scan_mode(scan_mode);
 
     for target in targets {
         scanner.add_target(target.inner.clone());
@@ -1164,6 +1378,40 @@ fn distance_matrix<'py>(
     Ok(arr.to_pyarray(py))
 }
 
+/// Transforms an entire PDB file by applying a rigid body transformation.
+///
+/// Unlike `Domain.to_pdb()` which only outputs C-alpha atoms, this function
+/// reads the original PDB file and transforms ALL atoms (backbone, side chains,
+/// waters, ligands, etc.), preserving all other information in the file.
+///
+/// This is useful when you want to output the full structure after computing
+/// an alignment based on C-alpha atoms.
+///
+/// Args:
+///     input_path: Path to the input PDB file.
+///     output_path: Path to write the transformed PDB file.
+///     transform: The transformation to apply (from alignment result).
+///     chain: Optional chain filter; if specified, only transform atoms from this chain.
+///
+/// Raises:
+///     IOError: If the input file cannot be read or output file cannot be written.
+///
+/// Example:
+///     >>> result = rivet.pairwise_align(domain1, domain2)
+///     >>> # Transform the full PDB file (all atoms) using the computed alignment
+///     >>> rivet.transform_pdb_file("mobile.pdb", "mobile_aligned.pdb", result.transform)
+#[pyfunction]
+#[pyo3(name = "transform_pdb_file", signature = (input_path, output_path, transform, chain=None))]
+fn py_transform_pdb(
+    input_path: &str,
+    output_path: &str,
+    transform: &PyTransform,
+    chain: Option<char>,
+) -> PyResult<()> {
+    transform_pdb(input_path, output_path, &transform.inner, chain)
+        .map_err(|e| PyIOError::new_err(format!("Failed to transform PDB: {}", e)))
+}
+
 /// Computes centroid of a coordinate set.
 ///
 /// Args:
@@ -1217,6 +1465,7 @@ fn rivet(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Alignment functions
     m.add_function(wrap_pyfunction!(pairwise_align, m)?)?;
     m.add_function(wrap_pyfunction!(multiple_align, m)?)?;
+    m.add_function(wrap_pyfunction!(align_pdbs, m)?)?;
     m.add_function(wrap_pyfunction!(scan_database, m)?)?;
 
     // Utility functions
@@ -1224,6 +1473,7 @@ fn rivet(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(superpose, m)?)?;
     m.add_function(wrap_pyfunction!(distance_matrix, m)?)?;
     m.add_function(wrap_pyfunction!(centroid, m)?)?;
+    m.add_function(wrap_pyfunction!(py_transform_pdb, m)?)?;
 
     // Version
     m.add("__version__", stamp_core::VERSION)?;

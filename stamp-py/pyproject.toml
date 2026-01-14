@@ -65,7 +65,7 @@ Issues = "https://github.com/stamp-project/stamp-rust/issues"
 [tool.maturin]
 # Build configuration
 python-source = "python"
-module-name = "stamp"
+module-name = "rivet"
 features = ["pyo3/extension-module"]
 strip = true
 

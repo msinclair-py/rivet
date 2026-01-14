@@ -1,33 +1,143 @@
 # Rivet
 
-A fast, safe implementation of the STAMP (Structural Alignment of Multiple Proteins) algorithm in Rust with Python bindings.
+A fast, modern implementation of the STAMP (Structural Alignment of Multiple Proteins) algorithm in Rust with Python bindings.
 
 [![CI](https://github.com/msinclair/rivet/actions/workflows/ci.yml/badge.svg)](https://github.com/msinclair/rivet/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/rivet-rs.svg)](https://pypi.org/project/rivet-rs/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Overview
+## Features
 
-Rivet provides structural alignment of protein structures using the STAMP algorithm described in:
-
-- Russell & Barton, *Proteins* 14:309-323 (1992)
-- Rossmann & Argos, *J. Mol. Biol.* 105:75-95 (1976)
-
-Key features:
+- **Full PDB Output**: Aligns and transforms complete structures (all atoms), not just C-alpha
+- **Simple API**: One function call to align multiple PDB files and write output
 - **Fast**: Written in Rust for maximum performance
-- **Safe**: Zero unsafe code, memory-safe by design
-- **Easy to use**: Simple Python API via `pip install rivet-rs`
-- **Cross-platform**: Supports Linux, macOS, and Windows
+- **Safe**: Memory-safe by design, zero unsafe code
+- **Cross-platform**: Linux, macOS, and Windows
 
 ## Installation
-
-### Python
 
 ```bash
 pip install rivet-rs
 ```
 
-### Rust
+## Quick Start
+
+### Align Multiple Structures (Simplest)
+
+```python
+import rivet
+
+# Align PDB files and write full structures to output directory
+result = rivet.align_pdbs(
+    ["protein1.pdb", "protein2.pdb", "protein3.pdb"],
+    output_dir="aligned/",
+    chain="A"
+)
+
+print(f"Average RMSD: {result.avg_rmsd:.2f} Å")
+print(f"Core positions: {result.n_core}")
+# Output files written to aligned/aligned_protein1.pdb, etc.
+```
+
+### Pairwise Alignment
+
+```python
+import rivet
+
+# Load structures
+d1 = rivet.Domain.from_pdb("reference.pdb", chain="A")
+d2 = rivet.Domain.from_pdb("mobile.pdb", chain="A")
+
+# Align (use scan_mode=True for structures in different coordinate frames)
+result = rivet.pairwise_align(d1, d2, scan_mode=True)
+
+print(f"RMSD: {result.rmsd:.2f} Å")
+print(f"Score: {result.score:.4f}")
+print(f"Aligned: {result.n_aligned} residues")
+
+# Write aligned structure (full PDB with all atoms by default)
+d2.to_pdb("mobile_aligned.pdb", transform=result.transform)
+```
+
+### Parameters for Remote Homologs
+
+When comparing distantly related structures, use tolerant parameters:
+
+```python
+params = rivet.Parameters()
+params.e1 = 5.0   # Distance tolerance (default: 2.0)
+params.e2 = 10.0  # Conformational tolerance (default: 5.0)
+
+result = rivet.pairwise_align(d1, d2, params, scan_mode=True)
+```
+
+## Output Options
+
+By default, `to_pdb()` writes the **full structure** (all atoms: backbone, side chains, waters, ligands):
+
+```python
+# Default: full structure with all atoms
+d2.to_pdb("output.pdb", transform=result.transform)
+
+# Explicit: C-alpha only (smaller file, faster)
+d2.to_pdb("output_ca.pdb", transform=result.transform, full=False)
+```
+
+## Multiple Alignment with Manual Control
+
+For more control over the alignment process:
+
+```python
+import rivet
+
+# Load domains
+domains = [
+    rivet.Domain.from_pdb("protein1.pdb", chain="A"),
+    rivet.Domain.from_pdb("protein2.pdb", chain="A"),
+    rivet.Domain.from_pdb("protein3.pdb", chain="A"),
+]
+
+params = rivet.Parameters()
+params.e1 = 5.0
+params.e2 = 10.0
+
+# Step 1: Pre-align to reference
+aligned_domains = [domains[0]]
+pre_transforms = [rivet.Transform()]
+
+for i in range(1, len(domains)):
+    result = rivet.pairwise_align(domains[0], domains[i], params, scan_mode=True)
+    pre_transforms.append(result.transform)
+
+    # Create pre-aligned domain
+    coords = result.get_transformed_coordinates(domains[i])
+    aligned = rivet.Domain.from_arrays(
+        domains[i].id, coords, domains[i].sequence, chain=domains[i].chain
+    )
+    aligned_domains.append(aligned)
+
+# Step 2: Run multiple alignment
+result = rivet.multiple_align(aligned_domains, params, pre_transforms=pre_transforms)
+
+# Step 3: Write output using composed transforms
+original_files = ["protein1.pdb", "protein2.pdb", "protein3.pdb"]
+for pdb_file, full_transform in zip(original_files, result.full_transforms):
+    rivet.transform_pdb_file(pdb_file, f"aligned_{pdb_file}", full_transform)
+```
+
+## Database Scanning
+
+```python
+query = rivet.Domain.from_pdb("query.pdb", chain="A")
+targets = [rivet.Domain.from_pdb(f, chain="A") for f in target_files]
+
+hits = rivet.scan_database(query, targets, score_cutoff=0.3)
+
+for hit in hits:
+    print(f"{hit.target_id}: Score={hit.score:.4f}, RMSD={hit.rmsd:.2f} Å")
+```
+
+## Rust API
 
 Add to your `Cargo.toml`:
 
@@ -36,50 +146,20 @@ Add to your `Cargo.toml`:
 stamp-core = "0.1"
 ```
 
-## Quick Start
-
-### Python
-
-```python
-import rivet
-
-# Load protein structures
-d1 = rivet.Domain.from_pdb("protein1.pdb", chain="A")
-d2 = rivet.Domain.from_pdb("protein2.pdb", chain="A")
-
-# Perform pairwise alignment
-result = rivet.pairwise_align(d1, d2)
-
-print(f"RMSD: {result.rmsd:.2f} Å")
-print(f"Aligned residues: {result.n_aligned}")
-print(f"Score: {result.score:.4f}")
-
-# Get transformation matrix
-transform = result.transform
-rotated_coords = transform.apply(d2.coordinates)
-
-# Multiple structure alignment
-domains = [d1, d2, d3]
-multi_result = rivet.multiple_align(domains)
-print(f"Core positions: {multi_result.n_core}")
-```
-
-### Rust
-
 ```rust
-use stamp_core::{io::parse_pdb, pairwise::align_pair, types::Parameters};
+use stamp_core::{io::{parse_pdb, transform_pdb}, pairwise::align_pair, types::Parameters};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Load structures
-    let domain1 = parse_pdb("protein1.pdb", Some('A'))?;
-    let domain2 = parse_pdb("protein2.pdb", Some('A'))?;
+    let d1 = parse_pdb("reference.pdb", Some('A'))?;
+    let d2 = parse_pdb("mobile.pdb", Some('A'))?;
 
-    // Align with default parameters
     let params = Parameters::default();
-    let result = align_pair(&domain1, &domain2, &params)?;
+    let result = align_pair(&d1, &d2, &params)?;
 
-    println!("RMSD: {:.2} Å", result.rmsd);
-    println!("Score: {:.4}", result.score);
+    println!("RMSD: {:.2} Å, Score: {:.4}", result.rmsd, result.score);
+
+    // Transform full PDB (all atoms)
+    transform_pdb("mobile.pdb", "mobile_aligned.pdb", &result.transform, None)?;
 
     Ok(())
 }
@@ -87,89 +167,56 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## API Reference
 
-### Python Classes
-
-| Class | Description |
-|-------|-------------|
-| `Domain` | Protein domain with C-alpha coordinates |
-| `Parameters` | Alignment parameters (E1, E2, gap penalties, etc.) |
-| `Transform` | 3D rigid body transformation (rotation + translation) |
-| `AlignmentResult` | Result of pairwise alignment |
-| `MultipleAlignmentResult` | Result of multiple alignment |
-| `ScanHit` | Database scan hit |
-
-### Python Functions
+### Functions
 
 | Function | Description |
 |----------|-------------|
-| `pairwise_align(d1, d2, params=None)` | Align two structures |
-| `multiple_align(domains, params=None)` | Align multiple structures |
+| `align_pdbs(files, output_dir, ...)` | High-level: align PDB files and write output |
+| `pairwise_align(d1, d2, params, scan_mode)` | Align two structures |
+| `multiple_align(domains, params, pre_transforms)` | Multiple structure alignment |
+| `transform_pdb_file(input, output, transform)` | Transform full PDB file |
 | `scan_database(query, targets, ...)` | Scan query against database |
 | `compute_rmsd(coords1, coords2)` | Compute RMSD |
 | `superpose(fixed, mobile)` | Optimal superposition |
-| `distance_matrix(coords1, coords2)` | Pairwise distances |
-| `centroid(coords)` | Compute centroid |
 
-### Parameters
+### Classes
 
-Key alignment parameters with defaults:
+| Class | Description |
+|-------|-------------|
+| `Domain` | Protein domain with coordinates |
+| `Parameters` | Alignment parameters |
+| `Transform` | 3D rigid body transformation |
+| `AlignmentResult` | Pairwise alignment result |
+| `MultipleAlignmentResult` | Multiple alignment result with `full_transforms` |
+
+### Key Parameters
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `e1` | 2.0 | Distance tolerance (Å) |
-| `e2` | 5.0 | Conformational tolerance (Å) |
-| `n_passes` | 2 | Number of fitting passes |
-| `max_iter` | 100 | Maximum iterations |
-| `use_secondary` | true | Use secondary structure |
-
-## Command Line Interface
-
-The `stamp` CLI is also available:
-
-```bash
-# Pairwise alignment
-stamp pairwise protein1.pdb protein2.pdb
-
-# Multiple alignment from domain file
-stamp treewise domains.dom -o aligned.pdb
-
-# Database scan
-stamp scan query.pdb -d database.dom
-```
+| `e1` | 2.0 | Distance tolerance (Å) - increase for remote homologs |
+| `e2` | 5.0 | Conformational tolerance (Å) - increase for flexible regions |
+| `n_passes` | 2 | Number of refinement passes |
+| `scan_mode` | False | Enable sliding window scan for different coordinate frames |
 
 ## Algorithm
 
-STAMP uses the Rossmann-Argos probability measure to score structural equivalence between residue pairs:
+STAMP uses the Rossmann-Argos probability measure for structural equivalence:
 
-```
-Pij = exp(Dij + Cij)
-
-Where:
-- Dij = -distance² / (2×E1²)     [distance component]
-- Cij = -Sij / (2×E2²)           [conformational component]
-```
-
-The alignment is iteratively refined using:
-1. Calculate probability matrix
-2. Smith-Waterman dynamic programming
-3. Extract equivalent residue pairs
+1. Calculate probability matrix based on inter-residue distances
+2. Smith-Waterman dynamic programming to find optimal alignment
+3. Extract equivalent residue pairs above threshold
 4. Compute optimal superposition (Kabsch algorithm)
-5. Check convergence
+5. Iterate until convergence
 
-## Performance
-
-Rivet is designed for high performance:
-- Zero-copy NumPy array integration
-- Efficient matrix operations via nalgebra
-- Optional parallel processing with rayon
+References:
+- Russell & Barton, *Proteins* 14:309-323 (1992)
+- Rossmann & Argos, *J. Mol. Biol.* 105:75-95 (1976)
 
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
 
 ## Citation
-
-If you use Rivet in your research, please cite:
 
 ```bibtex
 @article{russell1992multiple,
@@ -182,7 +229,3 @@ If you use Rivet in your research, please cite:
   year={1992}
 }
 ```
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
