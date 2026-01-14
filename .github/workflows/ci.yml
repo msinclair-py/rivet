@@ -107,6 +107,10 @@ jobs:
       - name: Install dependencies
         run: pip install maturin pytest numpy
 
+      - name: Clean old wheels
+        run: rm -rf target/wheels/
+        shell: bash
+
       - name: Build wheel
         run: maturin build --release --interpreter python
 
