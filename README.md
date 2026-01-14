@@ -2,7 +2,7 @@
 
 A fast, modern implementation of the STAMP (Structural Alignment of Multiple Proteins) algorithm in Rust with Python bindings.
 
-[![CI](https://github.com/msinclair/rivet/actions/workflows/ci.yml/badge.svg)](https://github.com/msinclair/rivet/actions/workflows/ci.yml)
+![CI](https://github.com/msinclair/rivet/actions/workflows/ci.yml/badge.svg)
 [![PyPI](https://img.shields.io/pypi/v/rivet-rs.svg)](https://pypi.org/project/rivet-rs/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
