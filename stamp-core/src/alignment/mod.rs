@@ -215,6 +215,78 @@ impl SwResult {
     }
 }
 
+/// Result of Smith-Waterman alignment with flat matrix storage.
+///
+/// This version uses contiguous memory for better cache performance.
+#[derive(Debug, Clone)]
+pub struct SwResultFlat {
+    /// Maximum alignment score found.
+    pub max_score: i32,
+    /// Path matrix storing direction bitmasks in row-major order.
+    /// Indexed as: j * cols + i (note: j is row, i is column for SW).
+    path_data: Vec<u8>,
+    /// Number of rows (len_b).
+    rows: usize,
+    /// Number of columns (len_a).
+    cols: usize,
+    /// All discovered alignment paths (sorted by score).
+    pub paths: Vec<AlignmentPath>,
+    /// Total number of paths found.
+    pub total_paths: usize,
+}
+
+impl SwResultFlat {
+    /// Creates a new empty result with flat storage.
+    #[must_use]
+    pub fn new(len_a: usize, len_b: usize) -> Self {
+        Self {
+            max_score: -1,
+            path_data: vec![0u8; len_a * len_b],
+            rows: len_b,
+            cols: len_a,
+            paths: Vec::new(),
+            total_paths: 0,
+        }
+    }
+
+    /// Gets the direction at (j, i) - note: j is row, i is column.
+    #[inline]
+    #[must_use]
+    pub fn get_direction(&self, j: usize, i: usize) -> u8 {
+        self.path_data[j * self.cols + i]
+    }
+
+    /// Sets the direction at (j, i).
+    #[inline]
+    pub fn set_direction(&mut self, j: usize, i: usize, dir: u8) {
+        self.path_data[j * self.cols + i] = dir;
+    }
+
+    /// Returns dimensions (len_a, len_b).
+    #[must_use]
+    pub fn dimensions(&self) -> (usize, usize) {
+        (self.cols, self.rows)
+    }
+
+    /// Converts to the legacy SwResult format for compatibility.
+    #[must_use]
+    pub fn to_legacy(&self) -> SwResult {
+        let path_matrix: Vec<Vec<u8>> = (0..self.rows)
+            .map(|j| {
+                let start = j * self.cols;
+                self.path_data[start..start + self.cols].to_vec()
+            })
+            .collect();
+
+        SwResult {
+            max_score: self.max_score,
+            path_matrix,
+            paths: self.paths.clone(),
+            total_paths: self.total_paths,
+        }
+    }
+}
+
 /// Smith-Waterman local alignment algorithm for structural data.
 ///
 /// This implementation follows the original STAMP algorithm with support for:

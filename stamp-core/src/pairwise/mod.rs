@@ -24,8 +24,9 @@
 use crate::alignment::{smith_waterman, smith_waterman_corner_cut, traceback, SwResult};
 use crate::math::superpose;
 use crate::scoring::{
-    calculate_probability_matrix, calculate_probability_matrix_cc, domain_to_coords,
-    sequence_identity, ProbabilityMatrix, RossmannParams,
+    calculate_probability_matrix, calculate_probability_matrix_cc,
+    calculate_probability_matrix_auto, calculate_probability_matrix_cc_auto,
+    domain_to_coords, sequence_identity, ProbabilityMatrix, RossmannParams,
 };
 use crate::types::{AlignmentResult, Coord3, Domain, Parameters, StampResult, Transform};
 
@@ -41,6 +42,13 @@ pub const DEFAULT_MIN_FIT: usize = 3;
 /// Default precision for integer coordinate scaling.
 pub const DEFAULT_PRECISION: i32 = 1000;
 
+/// Default RMSD change threshold for convergence (Angstroms).
+pub const DEFAULT_RMSD_TOL: f64 = 0.01;
+
+/// Default E2 parameter (conformational tolerance) - tighter than original.
+/// The original STAMP used 5.0, but 3.5 provides better conformational matching.
+pub const DEFAULT_E2_TIGHT: f64 = 3.5;
+
 /// Configuration for pairwise fitting.
 #[derive(Debug, Clone)]
 pub struct PairwiseConfig {
@@ -52,8 +60,12 @@ pub struct PairwiseConfig {
     pub min_fit: usize,
     /// Precision for integer coordinate scaling.
     pub precision: i32,
-    /// Gap penalty for Smith-Waterman.
+    /// Gap opening penalty for Smith-Waterman.
     pub gap_penalty: f64,
+    /// Gap extension penalty for affine gap penalties.
+    pub gap_extend: f64,
+    /// Use affine gap penalties (gap_penalty for open, gap_extend for extend).
+    pub use_affine_gaps: bool,
     /// Use corner-cutting optimization for Smith-Waterman.
     pub use_corner_cutting: bool,
     /// Corner-cutting factor.
@@ -78,6 +90,12 @@ pub struct PairwiseConfig {
     pub nmean: f64,
     /// Normalization standard deviation.
     pub nsd: f64,
+    /// Use RMSD-based convergence detection.
+    pub use_rmsd_convergence: bool,
+    /// RMSD change threshold for convergence (Angstroms).
+    pub rmsd_tol: f64,
+    /// Use automatic parallel computation for large matrices.
+    pub use_parallel: bool,
 }
 
 impl Default for PairwiseConfig {
@@ -88,6 +106,8 @@ impl Default for PairwiseConfig {
             min_fit: DEFAULT_MIN_FIT,
             precision: DEFAULT_PRECISION,
             gap_penalty: 0.0,
+            gap_extend: 0.0,
+            use_affine_gaps: false,
             use_corner_cutting: true,
             cc_factor: 100.0,
             cc_add: true,
@@ -100,6 +120,9 @@ impl Default for PairwiseConfig {
             e2: 5.0,
             nmean: 0.5,
             nsd: 0.4,
+            use_rmsd_convergence: true,
+            rmsd_tol: DEFAULT_RMSD_TOL,
+            use_parallel: true,
         }
     }
 }
@@ -114,6 +137,8 @@ impl PairwiseConfig {
             min_fit: DEFAULT_MIN_FIT,
             precision: DEFAULT_PRECISION,
             gap_penalty: params.pen_gap,
+            gap_extend: params.pen_ext,
+            use_affine_gaps: params.pen_ext > 0.0,
             use_corner_cutting: true,
             cc_factor: 100.0,
             cc_add: true,
@@ -126,6 +151,9 @@ impl PairwiseConfig {
             e2: params.e2,
             nmean: 0.5,
             nsd: 0.4,
+            use_rmsd_convergence: true,
+            rmsd_tol: DEFAULT_RMSD_TOL,
+            use_parallel: true,
         }
     }
 
@@ -149,6 +177,47 @@ impl PairwiseConfig {
             cutoff: 4.0,
             ..Default::default()
         }
+    }
+
+    /// Creates configuration with tighter E2 for better conformational matching.
+    #[must_use]
+    pub fn tight_conformational() -> Self {
+        Self {
+            e1: 2.0,
+            e2: DEFAULT_E2_TIGHT, // 3.5 instead of 5.0
+            ..Default::default()
+        }
+    }
+
+    /// Builder method to set E2 parameter.
+    #[must_use]
+    pub fn with_e2(mut self, e2: f64) -> Self {
+        self.e2 = e2;
+        self
+    }
+
+    /// Builder method to enable/disable RMSD-based convergence.
+    #[must_use]
+    pub fn with_rmsd_convergence(mut self, enabled: bool, tolerance: f64) -> Self {
+        self.use_rmsd_convergence = enabled;
+        self.rmsd_tol = tolerance;
+        self
+    }
+
+    /// Builder method to enable/disable parallel computation.
+    #[must_use]
+    pub fn with_parallel(mut self, enabled: bool) -> Self {
+        self.use_parallel = enabled;
+        self
+    }
+
+    /// Builder method to set affine gap penalties.
+    #[must_use]
+    pub fn with_affine_gaps(mut self, open: f64, extend: f64) -> Self {
+        self.gap_penalty = open;
+        self.gap_extend = extend;
+        self.use_affine_gaps = true;
+        self
     }
 
     /// Converts to Rossmann-Argos parameters.
@@ -251,6 +320,8 @@ struct FittingState {
     cumulative_transform: Transform,
     /// Current RMSD.
     rmsd: f64,
+    /// Previous RMSD (for convergence detection).
+    prev_rmsd: f64,
     /// Current score.
     score: f64,
     /// Current alignment length.
@@ -275,6 +346,7 @@ impl FittingState {
             coords2,
             cumulative_transform: Transform::identity(),
             rmsd: f64::INFINITY,
+            prev_rmsd: f64::INFINITY,
             score: 0.0,
             alignment_length: 0,
             n_fit: 0,
@@ -352,6 +424,7 @@ pub fn pairfit(
 
     // Iteration variables
     let mut score_diff: f64 = config.score_tol + 1.0;
+    let mut rmsd_diff: f64 = f64::INFINITY;
     let mut score_rise = true;
     let mut iteration: u32 = 0;
 
@@ -361,12 +434,28 @@ pub fn pairfit(
 
         // Check termination conditions (after first iteration)
         if iteration > 1 {
-            if score_diff <= config.score_tol {
-                log::debug!(
-                    "Converged: score_diff={:.4}% <= tol={:.4}%",
-                    score_diff,
-                    config.score_tol
-                );
+            // Score-based convergence
+            let score_converged = score_diff <= config.score_tol;
+
+            // RMSD-based convergence (if enabled)
+            let rmsd_converged =
+                config.use_rmsd_convergence && rmsd_diff <= config.rmsd_tol && state.rmsd < 100.0;
+
+            if score_converged || rmsd_converged {
+                if score_converged {
+                    log::debug!(
+                        "Score converged: score_diff={:.4}% <= tol={:.4}%",
+                        score_diff,
+                        config.score_tol
+                    );
+                }
+                if rmsd_converged {
+                    log::debug!(
+                        "RMSD converged: rmsd_diff={:.4}A <= tol={:.4}A",
+                        rmsd_diff,
+                        config.rmsd_tol
+                    );
+                }
                 break;
             }
             if iteration > config.max_iter {
@@ -387,8 +476,14 @@ pub fn pairfit(
             }
         }
 
-        // Calculate probability matrix
-        let prob_matrix = if config.use_corner_cutting {
+        // Calculate probability matrix - use auto functions for parallel support
+        let prob_matrix = if config.use_parallel {
+            if config.use_corner_cutting {
+                calculate_probability_matrix_cc_auto(&coords1, &state.coords2, &ra_params)
+            } else {
+                calculate_probability_matrix_auto(&coords1, &state.coords2, &ra_params)
+            }
+        } else if config.use_corner_cutting {
             calculate_probability_matrix_cc(&coords1, &state.coords2, &ra_params)
         } else {
             calculate_probability_matrix(&coords1, &state.coords2, &ra_params)
@@ -399,6 +494,7 @@ pub fn pairfit(
 
         // Update state from path result
         let old_score = state.score;
+        state.prev_rmsd = state.rmsd;
         state.score = path_result.score;
         state.rmsd = path_result.rmsd;
         state.alignment_length = path_result.alignment_length;
@@ -415,6 +511,11 @@ pub fn pairfit(
             score_diff = 100.0 * (state.score - old_score).abs() / state.score;
         } else {
             score_diff = 0.0;
+        }
+
+        // Calculate RMSD difference
+        if state.prev_rmsd < f64::INFINITY && state.rmsd < f64::INFINITY {
+            rmsd_diff = (state.rmsd - state.prev_rmsd).abs();
         }
 
         score_rise = state.score > old_score;

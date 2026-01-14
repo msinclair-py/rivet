@@ -369,15 +369,16 @@ pub fn rossmann_argos_direct(
 ///
 /// This stores the Pij values between all pairs of residues in two structures.
 /// Values can be stored as raw probabilities, z-scores, or boolean equivalences.
+///
+/// Uses contiguous row-major storage for cache-friendly access and SIMD compatibility.
 #[derive(Debug, Clone)]
 pub struct ProbabilityMatrix {
     /// Number of residues in structure 1.
     pub len_a: usize,
     /// Number of residues in structure 2.
     pub len_b: usize,
-    /// Matrix values. Indexed as [i][j] for residue i in A, j in B.
-    /// Note: The C implementation uses 1-based indexing; we use 0-based.
-    pub values: Vec<Vec<f64>>,
+    /// Matrix values in row-major order. Index as: i * len_b + j.
+    values: Vec<f64>,
     /// Whether values are z-score normalized.
     pub normalized: bool,
     /// Computed mean (if statistics were calculated).
@@ -393,7 +394,21 @@ impl ProbabilityMatrix {
         Self {
             len_a,
             len_b,
-            values: vec![vec![0.0; len_b]; len_a],
+            values: vec![0.0; len_a * len_b],
+            normalized: false,
+            mean: None,
+            std_dev: None,
+        }
+    }
+
+    /// Creates a probability matrix from flat data.
+    #[must_use]
+    pub fn from_vec(len_a: usize, len_b: usize, values: Vec<f64>) -> Self {
+        assert_eq!(values.len(), len_a * len_b);
+        Self {
+            len_a,
+            len_b,
+            values,
             normalized: false,
             mean: None,
             std_dev: None,
@@ -401,14 +416,44 @@ impl ProbabilityMatrix {
     }
 
     /// Gets the value at position (i, j).
+    #[inline]
     #[must_use]
     pub fn get(&self, i: usize, j: usize) -> f64 {
-        self.values[i][j]
+        self.values[i * self.len_b + j]
     }
 
     /// Sets the value at position (i, j).
+    #[inline]
     pub fn set(&mut self, i: usize, j: usize, value: f64) {
-        self.values[i][j] = value;
+        self.values[i * self.len_b + j] = value;
+    }
+
+    /// Gets a slice of a single row.
+    #[inline]
+    #[must_use]
+    pub fn row(&self, i: usize) -> &[f64] {
+        let start = i * self.len_b;
+        &self.values[start..start + self.len_b]
+    }
+
+    /// Gets a mutable slice of a single row.
+    #[inline]
+    pub fn row_mut(&mut self, i: usize) -> &mut [f64] {
+        let start = i * self.len_b;
+        &mut self.values[start..start + self.len_b]
+    }
+
+    /// Returns the raw data slice for efficient iteration.
+    #[inline]
+    #[must_use]
+    pub fn as_slice(&self) -> &[f64] {
+        &self.values
+    }
+
+    /// Returns a mutable slice for efficient batch operations.
+    #[inline]
+    pub fn as_mut_slice(&mut self) -> &mut [f64] {
+        &mut self.values
     }
 
     /// Normalizes the matrix to z-scores using the given mean and standard deviation.
@@ -416,10 +461,9 @@ impl ProbabilityMatrix {
         if sd.abs() < 1e-10 {
             return;
         }
-        for row in &mut self.values {
-            for val in row {
-                *val = (*val - mean) / sd;
-            }
+        // SIMD-friendly: single contiguous iteration
+        for val in &mut self.values {
+            *val = (*val - mean) / sd;
         }
         self.normalized = true;
         self.mean = Some(mean);
@@ -433,13 +477,12 @@ impl ProbabilityMatrix {
             return;
         }
 
+        // SIMD-friendly: single pass over contiguous data
         let mut sum = 0.0;
         let mut sumsq = 0.0;
-        for row in &self.values {
-            for &val in row {
-                sum += val;
-                sumsq += val * val;
-            }
+        for &val in &self.values {
+            sum += val;
+            sumsq += val * val;
         }
 
         let mean = sum / n;
@@ -450,15 +493,25 @@ impl ProbabilityMatrix {
     }
 
     /// Converts to integer representation scaled by the given precision.
+    /// Returns a nested Vec for compatibility with Smith-Waterman.
     #[must_use]
     pub fn to_integer(&self, precision: i32) -> Vec<Vec<i32>> {
-        self.values
-            .iter()
-            .map(|row| {
-                row.iter()
+        (0..self.len_a)
+            .map(|i| {
+                self.row(i)
+                    .iter()
                     .map(|&v| (v * precision as f64).round() as i32)
                     .collect()
             })
+            .collect()
+    }
+
+    /// Converts to a flat integer vector.
+    #[must_use]
+    pub fn to_integer_flat(&self, precision: i32) -> Vec<i32> {
+        self.values
+            .iter()
+            .map(|&v| (v * precision as f64).round() as i32)
             .collect()
     }
 }
@@ -645,6 +698,230 @@ pub fn calculate_probability_matrix_cc(
     }
 
     matrix
+}
+
+// ============================================================================
+// Parallel probability matrix computation (requires "parallel" feature)
+// ============================================================================
+
+/// Calculates probability matrix using parallel computation.
+///
+/// This version uses Rayon for parallel row computation, providing significant
+/// speedup on multi-core systems for large matrices.
+///
+/// # Feature
+///
+/// Requires the `parallel` feature to be enabled.
+#[cfg(feature = "parallel")]
+#[must_use]
+pub fn calculate_probability_matrix_parallel(
+    coords1: &[Coord3],
+    coords2: &[Coord3],
+    params: &RossmannParams,
+) -> ProbabilityMatrix {
+    use rayon::prelude::*;
+
+    let len_a = coords1.len();
+    let len_b = coords2.len();
+
+    // Convert coordinates to integer format
+    let atoms1: Vec<IntCoord> = coords1
+        .iter()
+        .map(|c| IntCoord::from_coord3(c, params.precision))
+        .collect();
+    let atoms2: Vec<IntCoord> = coords2
+        .iter()
+        .map(|c| IntCoord::from_coord3(c, params.precision))
+        .collect();
+
+    // Parallel row computation
+    let values: Vec<f64> = if params.boolean_mode {
+        (0..len_a)
+            .into_par_iter()
+            .flat_map(|i| {
+                (0..len_b).map(move |j| {
+                    let result =
+                        compute_rossmann_at_position(&atoms1, &atoms2, i, j, len_a, len_b, params);
+                    if result.pij >= params.bool_cut {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                })
+            })
+            .collect()
+    } else {
+        (0..len_a)
+            .into_par_iter()
+            .flat_map(|i| {
+                (0..len_b).map(move |j| {
+                    compute_rossmann_at_position(&atoms1, &atoms2, i, j, len_a, len_b, params).pij
+                })
+            })
+            .collect()
+    };
+
+    let mut matrix = ProbabilityMatrix::from_vec(len_a, len_b, values);
+
+    // Normalize if not in boolean mode
+    if !params.boolean_mode {
+        if params.compute_stats {
+            matrix.normalize_with_computed_stats();
+        } else {
+            matrix.normalize(params.nmean, params.nsd);
+        }
+    }
+
+    matrix
+}
+
+/// Calculates probability matrix with corner-cutting using parallel computation.
+///
+/// This combines the corner-cutting optimization with parallel row processing.
+#[cfg(feature = "parallel")]
+#[must_use]
+pub fn calculate_probability_matrix_cc_parallel(
+    coords1: &[Coord3],
+    coords2: &[Coord3],
+    params: &RossmannParams,
+) -> ProbabilityMatrix {
+    use rayon::prelude::*;
+
+    let len_a = coords1.len();
+    let len_b = coords2.len();
+
+    // Convert coordinates to integer format
+    let atoms1: Vec<IntCoord> = coords1
+        .iter()
+        .map(|c| IntCoord::from_coord3(c, params.precision))
+        .collect();
+    let atoms2: Vec<IntCoord> = coords2
+        .iter()
+        .map(|c| IntCoord::from_coord3(c, params.precision))
+        .collect();
+
+    // Calculate corner-cutting parameters
+    let fk1 = if params.cc_add {
+        params.cc_factor + ((len_a as i32 - len_b as i32 - 4).abs() as f64)
+    } else {
+        params.cc_factor
+    };
+
+    let fn_val = (len_a + 1) as f64;
+    let fm_val = (len_b + 1) as f64;
+    let sqrt2 = std::f64::consts::SQRT_2;
+    let fcut = (fk1 / sqrt2)
+        * ((fm_val / fn_val + fn_val / fm_val) / (fm_val * fm_val + fn_val * fn_val).sqrt());
+
+    // Pre-compute valid j ranges for each row
+    let valid_ranges: Vec<(usize, usize)> = (0..len_a)
+        .map(|i| {
+            let jt = i as f64 / fn_val;
+            let mut start = 0usize;
+            let mut end = len_b;
+            let mut found_start = false;
+
+            for j in 0..len_b {
+                let corner_test = ((j as f64 / fm_val) - jt).abs();
+                if corner_test <= fcut {
+                    if !found_start {
+                        start = j;
+                        found_start = true;
+                    }
+                    end = j + 1;
+                } else if found_start {
+                    break;
+                }
+            }
+
+            if !found_start {
+                (0, 0) // No valid range
+            } else {
+                (start, end)
+            }
+        })
+        .collect();
+
+    // Parallel row computation with corner-cutting
+    let values: Vec<f64> = (0..len_a)
+        .into_par_iter()
+        .flat_map(|i| {
+            let (j_start, j_end) = valid_ranges[i];
+            (0..len_b).map(move |j| {
+                if j >= j_start && j < j_end {
+                    let result =
+                        compute_rossmann_at_position(&atoms1, &atoms2, i, j, len_a, len_b, params);
+                    if params.boolean_mode {
+                        if result.pij >= params.bool_cut {
+                            1.0
+                        } else {
+                            0.0
+                        }
+                    } else {
+                        result.pij
+                    }
+                } else {
+                    0.0 // Corner-cut region
+                }
+            })
+        })
+        .collect();
+
+    let mut matrix = ProbabilityMatrix::from_vec(len_a, len_b, values);
+
+    // Normalize if not in boolean mode
+    if !params.boolean_mode {
+        if params.compute_stats {
+            matrix.normalize_with_computed_stats();
+        } else {
+            matrix.normalize(params.nmean, params.nsd);
+        }
+    }
+
+    matrix
+}
+
+/// Automatically selects sequential or parallel computation based on matrix size.
+///
+/// For small matrices (< 2500 elements), uses sequential computation to avoid
+/// parallel overhead. For larger matrices, uses parallel computation if the
+/// `parallel` feature is enabled.
+#[must_use]
+pub fn calculate_probability_matrix_auto(
+    coords1: &[Coord3],
+    coords2: &[Coord3],
+    params: &RossmannParams,
+) -> ProbabilityMatrix {
+    // Threshold: parallel overhead isn't worth it for small matrices
+    #[cfg(feature = "parallel")]
+    {
+        const PARALLEL_THRESHOLD: usize = 2500; // ~50x50
+        let size = coords1.len() * coords2.len();
+        if size >= PARALLEL_THRESHOLD {
+            return calculate_probability_matrix_parallel(coords1, coords2, params);
+        }
+    }
+
+    calculate_probability_matrix(coords1, coords2, params)
+}
+
+/// Automatically selects sequential or parallel computation with corner-cutting.
+#[must_use]
+pub fn calculate_probability_matrix_cc_auto(
+    coords1: &[Coord3],
+    coords2: &[Coord3],
+    params: &RossmannParams,
+) -> ProbabilityMatrix {
+    #[cfg(feature = "parallel")]
+    {
+        const PARALLEL_THRESHOLD: usize = 2500;
+        let size = coords1.len() * coords2.len();
+        if size >= PARALLEL_THRESHOLD {
+            return calculate_probability_matrix_cc_parallel(coords1, coords2, params);
+        }
+    }
+
+    calculate_probability_matrix_cc(coords1, coords2, params)
 }
 
 /// Helper function to compute Rossmann probability at a specific position.
@@ -1271,8 +1548,9 @@ mod tests {
 
         assert_eq!(matrix.len_a, 3);
         assert_eq!(matrix.len_b, 2);
-        assert_eq!(matrix.values.len(), 3);
-        assert_eq!(matrix.values[0].len(), 2);
+        // Flat storage: len_a * len_b elements
+        assert_eq!(matrix.values.len(), 6);
+        assert_eq!(matrix.row(0).len(), 2);
     }
 
     #[test]
@@ -1293,11 +1571,12 @@ mod tests {
         let matrix = calculate_probability_matrix_cc(&coords1, &coords2, &params);
 
         // Check that we have some non-zero values
+        // Flat storage: iterate directly over values
         let non_zero_count: usize = matrix
             .values
             .iter()
-            .map(|row| row.iter().filter(|&&v| v.abs() > 1e-10).count())
-            .sum();
+            .filter(|&&v| v.abs() > 1e-10)
+            .count();
 
         assert!(non_zero_count > 0, "Should have some computed values");
         // With very aggressive CC on large matrices, corners should be zeros

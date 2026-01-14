@@ -43,6 +43,7 @@ pub mod alignment;
 pub mod clustering;
 pub mod io;
 pub mod math;
+pub mod matrix;
 pub mod pairwise;
 pub mod scan;
 pub mod scoring;
