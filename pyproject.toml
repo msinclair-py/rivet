@@ -3,7 +3,7 @@ requires = ["maturin>=1.5,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "rivet"
+name = "rivet-rs"
 version = "0.1.0"
 description = "Rivet - Structural Alignment of Multiple Proteins"
 readme = "README.md"
@@ -26,10 +26,13 @@ classifiers = [
 ]
 keywords = ["bioinformatics", "protein", "structure", "alignment", "rivet"]
 
+dependencies = [
+    "numpy>=1.24",
+]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
-    "numpy>=1.24",
 ]
 
 [project.urls]
@@ -39,11 +42,15 @@ Repository = "https://github.com/msinclair/rivet"
 
 [tool.maturin]
 manifest-path = "stamp-py/Cargo.toml"
-features = ["extension-module"]
+python-source = "stamp-py/python"
 module-name = "rivet"
+features = ["pyo3/extension-module"]
 strip = true
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+minversion = "7.0"
+testpaths = ["stamp-py/tests"]
+pythonpath = ["stamp-py/python"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
+addopts = ["-ra", "-q", "--strict-markers"]

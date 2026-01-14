@@ -6,10 +6,13 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = "Python bindings for STAMP structural alignment library"
 
 [lib]
-name = "stamp"
+name = "rivet"
 crate-type = ["cdylib"]
 
 [dependencies]

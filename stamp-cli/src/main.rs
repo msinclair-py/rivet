@@ -5,7 +5,10 @@
 
 use clap::{ArgAction, Args, Parser, Subcommand};
 use log::{error, info, warn};
-use stamp_core::io::{parse_domain_file, parse_dssp, parse_pdb, write_domain_file, write_pdb, write_pdb_multi, DomainSpec};
+use stamp_core::io::{
+    parse_domain_file, parse_dssp, parse_pdb, write_domain_file, write_pdb, write_pdb_multi,
+    DomainSpec,
+};
 use stamp_core::pairwise::align_pair;
 use stamp_core::scan::{roughfit, DatabaseScanner};
 use stamp_core::treewise::{multiple_align, refine_alignment};
@@ -377,15 +380,13 @@ fn main() {
 
     // Set up output writer
     let mut output: Box<dyn Write> = match &cli.log_file {
-        Some(path) => {
-            match File::create(path) {
-                Ok(file) => Box::new(BufWriter::new(file)),
-                Err(e) => {
-                    error!("Failed to create output file {:?}: {}", path, e);
-                    std::process::exit(1);
-                }
+        Some(path) => match File::create(path) {
+            Ok(file) => Box::new(BufWriter::new(file)),
+            Err(e) => {
+                error!("Failed to create output file {:?}: {}", path, e);
+                std::process::exit(1);
             }
-        }
+        },
         None => Box::new(std::io::stdout()),
     };
 
@@ -405,7 +406,10 @@ fn main() {
     }
 }
 
-fn run_pairwise(args: PairwiseArgs, output: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>> {
+fn run_pairwise(
+    args: PairwiseArgs,
+    output: &mut dyn Write,
+) -> Result<(), Box<dyn std::error::Error>> {
     let params = args.align_params.to_parameters();
 
     // Load domains either from domain file or from individual PDB files
@@ -414,10 +418,15 @@ fn run_pairwise(args: PairwiseArgs, output: &mut dyn Write) -> Result<(), Box<dy
         let (specs, _) = parse_domain_file(domain_file)?;
 
         if specs.len() < 2 {
-            return Err("Domain file must contain at least 2 structures for pairwise alignment".into());
+            return Err(
+                "Domain file must contain at least 2 structures for pairwise alignment".into(),
+            );
         }
         if specs.len() > 2 {
-            warn!("Domain file contains {} structures, using first two", specs.len());
+            warn!(
+                "Domain file contains {} structures, using first two",
+                specs.len()
+            );
         }
 
         (specs[0].load()?, specs[1].load()?)
@@ -441,16 +450,8 @@ fn run_pairwise(args: PairwiseArgs, output: &mut dyn Write) -> Result<(), Box<dy
         parse_dssp(dssp2, &mut domain2)?;
     }
 
-    info!(
-        "Structure 1: {} ({} residues)",
-        domain1.id,
-        domain1.len()
-    );
-    info!(
-        "Structure 2: {} ({} residues)",
-        domain2.id,
-        domain2.len()
-    );
+    info!("Structure 1: {} ({} residues)", domain1.id, domain1.len());
+    info!("Structure 2: {} ({} residues)", domain2.id, domain2.len());
 
     info!("Performing alignment with {} passes...", params.n_passes);
     let result = align_pair(&domain1, &domain2, &params)?;
@@ -458,17 +459,35 @@ fn run_pairwise(args: PairwiseArgs, output: &mut dyn Write) -> Result<(), Box<dy
     // Output results
     writeln!(output)?;
     writeln!(output, "=== Pairwise Alignment Results ===")?;
-    writeln!(output, "Structure 1:       {} ({} residues)", domain1.id, domain1.len())?;
-    writeln!(output, "Structure 2:       {} ({} residues)", domain2.id, domain2.len())?;
+    writeln!(
+        output,
+        "Structure 1:       {} ({} residues)",
+        domain1.id,
+        domain1.len()
+    )?;
+    writeln!(
+        output,
+        "Structure 2:       {} ({} residues)",
+        domain2.id,
+        domain2.len()
+    )?;
     writeln!(output, "-----------------------------------")?;
     writeln!(output, "Aligned residues:  {}", result.n_aligned)?;
     writeln!(output, "RMSD:              {:.3} A", result.rmsd)?;
     writeln!(output, "Sc score:          {:.4}", result.score)?;
-    writeln!(output, "Sequence identity: {:.1}%", result.seq_identity * 100.0)?;
+    writeln!(
+        output,
+        "Sequence identity: {:.1}%",
+        result.seq_identity * 100.0
+    )?;
 
     // Output transformation matrix
     writeln!(output)?;
-    writeln!(output, "Transformation matrix (to superpose {} onto {}):", domain2.id, domain1.id)?;
+    writeln!(
+        output,
+        "Transformation matrix (to superpose {} onto {}):",
+        domain2.id, domain1.id
+    )?;
     for i in 0..3 {
         writeln!(
             output,
@@ -485,7 +504,11 @@ fn run_pairwise(args: PairwiseArgs, output: &mut dyn Write) -> Result<(), Box<dy
         info!("Writing transformed structure to {:?}", output_path);
         write_pdb(output_path, &domain2, Some(&result.transform))?;
         writeln!(output)?;
-        writeln!(output, "Transformed structure written to: {:?}", output_path)?;
+        writeln!(
+            output,
+            "Transformed structure written to: {:?}",
+            output_path
+        )?;
     }
 
     if let Some(ref matrix_path) = args.output_matrix {
@@ -501,13 +524,20 @@ fn run_pairwise(args: PairwiseArgs, output: &mut dyn Write) -> Result<(), Box<dy
                 result.transform.translation[i]
             )?;
         }
-        writeln!(output, "Transformation matrix written to: {:?}", matrix_path)?;
+        writeln!(
+            output,
+            "Transformation matrix written to: {:?}",
+            matrix_path
+        )?;
     }
 
     Ok(())
 }
 
-fn run_treewise(args: TreewiseArgs, output: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>> {
+fn run_treewise(
+    args: TreewiseArgs,
+    output: &mut dyn Write,
+) -> Result<(), Box<dyn std::error::Error>> {
     let params = args.align_params.to_parameters();
 
     info!("Loading domain file: {:?}", args.domain_file);
@@ -561,7 +591,13 @@ fn run_treewise(args: TreewiseArgs, output: &mut dyn Write) -> Result<(), Box<dy
     writeln!(output)?;
     writeln!(output, "Structures:")?;
     for (i, domain) in domains.iter().enumerate() {
-        writeln!(output, "  {:2}. {} ({} residues)", i + 1, domain.id, domain.len())?;
+        writeln!(
+            output,
+            "  {:2}. {} ({} residues)",
+            i + 1,
+            domain.id,
+            domain.len()
+        )?;
     }
 
     // Write output files
@@ -569,17 +605,28 @@ fn run_treewise(args: TreewiseArgs, output: &mut dyn Write) -> Result<(), Box<dy
         info!("Writing superposed structures to {:?}", output_path);
         write_pdb_multi(output_path, &domains, Some(&result.transforms))?;
         writeln!(output)?;
-        writeln!(output, "Superposed structures written to: {:?}", output_path)?;
+        writeln!(
+            output,
+            "Superposed structures written to: {:?}",
+            output_path
+        )?;
     }
 
     if let Some(ref output_path) = args.output_domain {
-        info!("Writing domain file with transformations to {:?}", output_path);
+        info!(
+            "Writing domain file with transformations to {:?}",
+            output_path
+        );
         let mut updated_specs: Vec<DomainSpec> = specs.clone();
         for (i, spec) in updated_specs.iter_mut().enumerate() {
             spec.transform = Some(result.transforms[i].clone());
         }
         write_domain_file(output_path, &updated_specs, true)?;
-        writeln!(output, "Domain file with transformations written to: {:?}", output_path)?;
+        writeln!(
+            output,
+            "Domain file with transformations written to: {:?}",
+            output_path
+        )?;
     }
 
     // Write individual transformed structures
@@ -590,7 +637,11 @@ fn run_treewise(args: TreewiseArgs, output: &mut dyn Write) -> Result<(), Box<dy
             info!("Wrote {}", output_path);
         }
         writeln!(output)?;
-        writeln!(output, "Transformed structures written with prefix: {}", args.output_prefix)?;
+        writeln!(
+            output,
+            "Transformed structures written with prefix: {}",
+            args.output_prefix
+        )?;
     }
 
     Ok(())
@@ -632,9 +683,16 @@ fn run_scan(args: ScanArgs, output: &mut dyn Write) -> Result<(), Box<dyn std::e
         }
     }
 
-    info!("Database contains {} structures ({} loaded)", specs.len(), loaded);
+    info!(
+        "Database contains {} structures ({} loaded)",
+        specs.len(),
+        loaded
+    );
     if args.scan_mode {
-        info!("Scanning with slide={}, score cutoff={}...", args.slide, args.score_cutoff);
+        info!(
+            "Scanning with slide={}, score cutoff={}...",
+            args.slide, args.score_cutoff
+        );
     } else {
         info!("Scanning with score cutoff {}...", args.score_cutoff);
     }
@@ -667,7 +725,9 @@ fn run_scan(args: ScanArgs, output: &mut dyn Write) -> Result<(), Box<dyn std::e
     writeln!(output, "{}", "-".repeat(76))?;
 
     for hit in &hits {
-        let z_score = hit.z_score.map_or("N/A".to_string(), |z| format!("{:.2}", z));
+        let z_score = hit
+            .z_score
+            .map_or("N/A".to_string(), |z| format!("{:.2}", z));
         writeln!(
             output,
             "{:>4} {:>20} {:>8.4} {:>8.3} {:>8} {:>7.1}% {:>10}",
@@ -689,9 +749,14 @@ fn run_scan(args: ScanArgs, output: &mut dyn Write) -> Result<(), Box<dyn std::e
         writeln!(file, "# Database: {:?}", args.database)?;
         writeln!(file, "# Score cutoff: {}", args.score_cutoff)?;
         writeln!(file, "#")?;
-        writeln!(file, "# Rank\tTarget\tScore\tRMSD\tN_align\tSeq_ID\tZ-score")?;
+        writeln!(
+            file,
+            "# Rank\tTarget\tScore\tRMSD\tN_align\tSeq_ID\tZ-score"
+        )?;
         for hit in &hits {
-            let z_score = hit.z_score.map_or("NA".to_string(), |z| format!("{:.4}", z));
+            let z_score = hit
+                .z_score
+                .map_or("NA".to_string(), |z| format!("{:.4}", z));
             writeln!(
                 file,
                 "{}\t{}\t{:.4}\t{:.3}\t{}\t{:.4}\t{}",
@@ -711,7 +776,10 @@ fn run_scan(args: ScanArgs, output: &mut dyn Write) -> Result<(), Box<dyn std::e
     Ok(())
 }
 
-fn run_roughfit(args: RoughfitArgs, output: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>> {
+fn run_roughfit(
+    args: RoughfitArgs,
+    output: &mut dyn Write,
+) -> Result<(), Box<dyn std::error::Error>> {
     let params = args.align_params.to_parameters();
 
     info!("Loading domain file: {:?}", args.domain_file);
@@ -752,10 +820,19 @@ fn run_roughfit(args: RoughfitArgs, output: &mut dyn Write) -> Result<(), Box<dy
     writeln!(output)?;
     writeln!(output, "=== Roughfit Results ===")?;
     writeln!(output, "Number of structures: {}", domains.len())?;
-    writeln!(output, "Reference structure: {} ({} residues)", domains[0].id, domains[0].len())?;
+    writeln!(
+        output,
+        "Reference structure: {} ({} residues)",
+        domains[0].id,
+        domains[0].len()
+    )?;
     writeln!(output)?;
 
-    writeln!(output, "{:>4} {:>20} {:>10} {:>10}", "Num", "Domain", "N_aligned", "RMSD")?;
+    writeln!(
+        output,
+        "{:>4} {:>20} {:>10} {:>10}",
+        "Num", "Domain", "N_aligned", "RMSD"
+    )?;
     writeln!(output, "{}", "-".repeat(50))?;
 
     for (i, result) in results.iter().enumerate() {
@@ -765,7 +842,11 @@ fn run_roughfit(args: RoughfitArgs, output: &mut dyn Write) -> Result<(), Box<dy
             i + 1,
             result.domain_id,
             result.n_aligned,
-            if result.rmsd.is_finite() { result.rmsd } else { -1.0 }
+            if result.rmsd.is_finite() {
+                result.rmsd
+            } else {
+                -1.0
+            }
         )?;
     }
 
@@ -775,17 +856,28 @@ fn run_roughfit(args: RoughfitArgs, output: &mut dyn Write) -> Result<(), Box<dy
         let transforms: Vec<_> = results.iter().map(|r| r.transform.clone()).collect();
         write_pdb_multi(output_path, &domains, Some(&transforms))?;
         writeln!(output)?;
-        writeln!(output, "Superposed structures written to: {:?}", output_path)?;
+        writeln!(
+            output,
+            "Superposed structures written to: {:?}",
+            output_path
+        )?;
     }
 
     if let Some(ref output_path) = args.output_domain {
-        info!("Writing domain file with transformations to {:?}", output_path);
+        info!(
+            "Writing domain file with transformations to {:?}",
+            output_path
+        );
         let mut updated_specs: Vec<DomainSpec> = specs.clone();
         for (i, spec) in updated_specs.iter_mut().enumerate() {
             spec.transform = Some(results[i].transform.clone());
         }
         write_domain_file(output_path, &updated_specs, true)?;
-        writeln!(output, "Domain file with transformations written to: {:?}", output_path)?;
+        writeln!(
+            output,
+            "Domain file with transformations written to: {:?}",
+            output_path
+        )?;
     }
 
     // Write individual transformed structures
@@ -796,7 +888,11 @@ fn run_roughfit(args: RoughfitArgs, output: &mut dyn Write) -> Result<(), Box<dy
             info!("Wrote {}", output_path);
         }
         writeln!(output)?;
-        writeln!(output, "Transformed structures written with prefix: {}", args.output_prefix)?;
+        writeln!(
+            output,
+            "Transformed structures written with prefix: {}",
+            args.output_prefix
+        )?;
     }
 
     Ok(())
@@ -873,12 +969,34 @@ fn run_info(args: InfoArgs, output: &mut dyn Write) -> Result<(), Box<dyn std::e
                 max_z = max_z.max(coord.z);
             }
 
-            writeln!(output, "  X range: {:.2} to {:.2} ({:.2} A)", min_x, max_x, max_x - min_x)?;
-            writeln!(output, "  Y range: {:.2} to {:.2} ({:.2} A)", min_y, max_y, max_y - min_y)?;
-            writeln!(output, "  Z range: {:.2} to {:.2} ({:.2} A)", min_z, max_z, max_z - min_z)?;
+            writeln!(
+                output,
+                "  X range: {:.2} to {:.2} ({:.2} A)",
+                min_x,
+                max_x,
+                max_x - min_x
+            )?;
+            writeln!(
+                output,
+                "  Y range: {:.2} to {:.2} ({:.2} A)",
+                min_y,
+                max_y,
+                max_y - min_y
+            )?;
+            writeln!(
+                output,
+                "  Z range: {:.2} to {:.2} ({:.2} A)",
+                min_z,
+                max_z,
+                max_z - min_z
+            )?;
 
             let centroid = stamp_core::math::centroid(coords.iter().copied());
-            writeln!(output, "  Centroid: ({:.2}, {:.2}, {:.2})", centroid.x, centroid.y, centroid.z)?;
+            writeln!(
+                output,
+                "  Centroid: ({:.2}, {:.2}, {:.2})",
+                centroid.x, centroid.y, centroid.z
+            )?;
         }
     }
 
@@ -893,7 +1011,11 @@ fn run_parse(args: ParseArgs, output: &mut dyn Write) -> Result<(), Box<dyn std:
     writeln!(output, "=== Domain File Contents ===")?;
     writeln!(output, "File: {:?}", args.domain_file)?;
     writeln!(output, "Domains found: {}", specs.len())?;
-    writeln!(output, "Has transformations: {}", if has_transforms { "yes" } else { "no" })?;
+    writeln!(
+        output,
+        "Has transformations: {}",
+        if has_transforms { "yes" } else { "no" }
+    )?;
     writeln!(output)?;
 
     for (i, spec) in specs.iter().enumerate() {
@@ -911,7 +1033,12 @@ fn run_parse(args: ParseArgs, output: &mut dyn Write) -> Result<(), Box<dyn std:
         if args.load {
             match spec.load() {
                 Ok(domain) => {
-                    writeln!(output, "   Loaded: {} residues, chain {}", domain.len(), domain.chain)?;
+                    writeln!(
+                        output,
+                        "   Loaded: {} residues, chain {}",
+                        domain.len(),
+                        domain.chain
+                    )?;
                 }
                 Err(e) => {
                     writeln!(output, "   Load error: {}", e)?;
@@ -923,7 +1050,10 @@ fn run_parse(args: ParseArgs, output: &mut dyn Write) -> Result<(), Box<dyn std:
     Ok(())
 }
 
-fn run_convert(args: ConvertArgs, output: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>> {
+fn run_convert(
+    args: ConvertArgs,
+    output: &mut dyn Write,
+) -> Result<(), Box<dyn std::error::Error>> {
     info!("Loading input PDB: {:?}", args.input);
     let domain = parse_pdb(&args.input, Some(args.chain))?;
 
@@ -941,13 +1071,15 @@ fn run_convert(args: ConvertArgs, output: &mut dyn Write) -> Result<(), Box<dyn 
         }
 
         let rotation = stamp_core::types::RotationMatrix::new(
-            values[0], values[1], values[2],
-            values[4], values[5], values[6],
-            values[8], values[9], values[10],
+            values[0], values[1], values[2], values[4], values[5], values[6], values[8], values[9],
+            values[10],
         );
         let translation = stamp_core::types::Vec3::new(values[3], values[7], values[11]);
 
-        Some(stamp_core::types::Transform { rotation, translation })
+        Some(stamp_core::types::Transform {
+            rotation,
+            translation,
+        })
     } else {
         None
     };
@@ -956,10 +1088,19 @@ fn run_convert(args: ConvertArgs, output: &mut dyn Write) -> Result<(), Box<dyn 
     write_pdb(&args.output, &domain, transform.as_ref())?;
 
     writeln!(output)?;
-    writeln!(output, "Converted {} ({} residues) -> {:?}",
-        domain.id, domain.len(), args.output)?;
+    writeln!(
+        output,
+        "Converted {} ({} residues) -> {:?}",
+        domain.id,
+        domain.len(),
+        args.output
+    )?;
     if transform.is_some() {
-        writeln!(output, "Transformation applied from: {:?}", args.transform_file)?;
+        writeln!(
+            output,
+            "Transformation applied from: {:?}",
+            args.transform_file
+        )?;
     }
 
     Ok(())

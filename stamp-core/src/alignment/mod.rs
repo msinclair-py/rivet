@@ -498,10 +498,7 @@ pub fn smith_waterman(
             // Check if we should record a path (at matrix edges)
             if (i == len_a.saturating_sub(2)) || (j == len_b.saturating_sub(2)) {
                 let path = AlignmentPath::new(new[i].start, new[i].end, new[i].score);
-                if new[i].score >= min_score
-                    && new[i].start.i > 0
-                    && path.is_valid()
-                {
+                if new[i].score >= min_score && new[i].start.i > 0 && path.is_valid() {
                     if path_lists[new[i].start.i].add_if_better(path) {
                         result.total_paths += 1;
                     }
@@ -509,10 +506,7 @@ pub fn smith_waterman(
             } else if rtemp == 0 && old[im1].score > 0 {
                 // Path ended (score dropped to 0)
                 let path = AlignmentPath::new(old[im1].start, old[im1].end, old[im1].score);
-                if old[im1].score >= min_score
-                    && old[im1].start.i > 0
-                    && path.is_valid()
-                {
+                if old[im1].score >= min_score && old[im1].start.i > 0 && path.is_valid() {
                     if path_lists[old[im1].start.i].add_if_better(path) {
                         result.total_paths += 1;
                     }
@@ -703,20 +697,14 @@ pub fn smith_waterman_corner_cut(
             // Check if we should record a path
             if (i == len_a.saturating_sub(2)) || (j == len_b.saturating_sub(2)) {
                 let path = AlignmentPath::new(new[i].start, new[i].end, new[i].score);
-                if new[i].score >= min_score
-                    && new[i].start.i > 0
-                    && path.is_valid()
-                {
+                if new[i].score >= min_score && new[i].start.i > 0 && path.is_valid() {
                     if path_lists[new[i].start.i].add_if_better(path) {
                         result.total_paths += 1;
                     }
                 }
             } else if rtemp == 0 && old[im1].score > 0 {
                 let path = AlignmentPath::new(old[im1].start, old[im1].end, old[im1].score);
-                if old[im1].score >= min_score
-                    && old[im1].start.i > 0
-                    && path.is_valid()
-                {
+                if old[im1].score >= min_score && old[im1].start.i > 0 && path.is_valid() {
                     if path_lists[old[im1].start.i].add_if_better(path) {
                         result.total_paths += 1;
                     }
@@ -776,7 +764,10 @@ pub fn smith_waterman_corner_cut(
 /// }
 /// ```
 #[must_use]
-pub fn traceback(path_matrix: &[Vec<u8>], path: &AlignmentPath) -> (Vec<(usize, usize)>, usize, usize) {
+pub fn traceback(
+    path_matrix: &[Vec<u8>],
+    path: &AlignmentPath,
+) -> (Vec<(usize, usize)>, usize, usize) {
     let mut aligned_pairs = Vec::new();
     let mut hgap_count = 0usize;
     let mut vgap_count = 0usize;
@@ -1165,9 +1156,18 @@ mod tests {
         assert_eq!(Direction::Vertical.to_bitmask(), direction::VERT);
         assert_eq!(Direction::None.to_bitmask(), direction::NONE);
 
-        assert_eq!(Direction::from_bitmask(direction::DIAG), Direction::Diagonal);
-        assert_eq!(Direction::from_bitmask(direction::HORIZ), Direction::Horizontal);
-        assert_eq!(Direction::from_bitmask(direction::VERT), Direction::Vertical);
+        assert_eq!(
+            Direction::from_bitmask(direction::DIAG),
+            Direction::Diagonal
+        );
+        assert_eq!(
+            Direction::from_bitmask(direction::HORIZ),
+            Direction::Horizontal
+        );
+        assert_eq!(
+            Direction::from_bitmask(direction::VERT),
+            Direction::Vertical
+        );
         assert_eq!(Direction::from_bitmask(direction::NONE), Direction::None);
     }
 
@@ -1206,18 +1206,12 @@ mod tests {
 
     #[test]
     fn test_alignment_path_validity() {
-        let valid_path = AlignmentPath::new(
-            AlignmentCoord::new(1, 1),
-            AlignmentCoord::new(5, 5),
-            100,
-        );
+        let valid_path =
+            AlignmentPath::new(AlignmentCoord::new(1, 1), AlignmentCoord::new(5, 5), 100);
         assert!(valid_path.is_valid());
 
-        let invalid_path = AlignmentPath::new(
-            AlignmentCoord::new(1, 1),
-            AlignmentCoord::new(1, 5),
-            100,
-        );
+        let invalid_path =
+            AlignmentPath::new(AlignmentCoord::new(1, 1), AlignmentCoord::new(1, 5), 100);
         assert!(!invalid_path.is_valid());
     }
 
@@ -1225,17 +1219,9 @@ mod tests {
     fn test_path_list_add_if_better() {
         let mut pl = PathList::new();
 
-        let path1 = AlignmentPath::new(
-            AlignmentCoord::new(1, 1),
-            AlignmentCoord::new(5, 5),
-            100,
-        );
+        let path1 = AlignmentPath::new(AlignmentCoord::new(1, 1), AlignmentCoord::new(5, 5), 100);
 
-        let path2 = AlignmentPath::new(
-            AlignmentCoord::new(1, 1),
-            AlignmentCoord::new(6, 6),
-            150,
-        );
+        let path2 = AlignmentPath::new(AlignmentCoord::new(1, 1), AlignmentCoord::new(6, 6), 150);
 
         assert!(pl.add_if_better(path1));
         assert_eq!(pl.len(), 1);
@@ -1258,11 +1244,7 @@ mod tests {
         path_matrix[2][2] = direction::DIAG;
         path_matrix[3][3] = direction::DIAG;
 
-        let path = AlignmentPath::new(
-            AlignmentCoord::new(1, 1),
-            AlignmentCoord::new(3, 3),
-            30,
-        );
+        let path = AlignmentPath::new(AlignmentCoord::new(1, 1), AlignmentCoord::new(3, 3), 30);
 
         let (aligned, hgaps, vgaps) = traceback(&path_matrix, &path);
 
@@ -1314,11 +1296,7 @@ mod tests {
         path_matrix[2][2] = direction::DIAG;
         path_matrix[3][3] = direction::DIAG;
 
-        let path = AlignmentPath::new(
-            AlignmentCoord::new(1, 1),
-            AlignmentCoord::new(3, 3),
-            30,
-        );
+        let path = AlignmentPath::new(AlignmentCoord::new(1, 1), AlignmentCoord::new(3, 3), 30);
 
         let pairs = extract_aligned_pairs(&path_matrix, &path);
         assert!(!pairs.is_empty());

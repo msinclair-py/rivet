@@ -18,7 +18,9 @@
 //! - Alternate conformation handling
 //! - Transformation matrices for pre-aligned structures
 
-use crate::types::{Coord3, Domain, Residue, RotationMatrix, StampError, StampResult, Transform, Vec3};
+use crate::types::{
+    Coord3, Domain, Residue, RotationMatrix, StampError, StampResult, Transform, Vec3,
+};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write as IoWrite};
 use std::path::Path;
@@ -61,13 +63,21 @@ impl BrookhavenNumber {
     /// Creates a wildcard that matches any residue in the given chain.
     #[must_use]
     pub fn chain_wildcard(cid: char) -> Self {
-        Self { n: 0, cid, ins: '?' }
+        Self {
+            n: 0,
+            cid,
+            ins: '?',
+        }
     }
 
     /// Creates a wildcard that matches any residue.
     #[must_use]
     pub fn any() -> Self {
-        Self { n: 0, cid: '?', ins: '?' }
+        Self {
+            n: 0,
+            cid: '?',
+            ins: '?',
+        }
     }
 
     /// Checks if this number matches a specific position.
@@ -103,7 +113,11 @@ impl BrookhavenNumber {
         let n: i32 = parts[0].parse().ok()?;
         let ins = if parts.len() > 1 {
             let ins_char = parts[1].chars().next().unwrap_or('_');
-            if ins_char == '_' { ' ' } else { ins_char }
+            if ins_char == '_' {
+                ' '
+            } else {
+                ins_char
+            }
         } else {
             ' '
         };
@@ -302,13 +316,7 @@ impl DomainSpec {
 
     /// Creates a specification for a residue range.
     #[must_use]
-    pub fn with_range(
-        id: String,
-        filename: String,
-        chain: char,
-        start: i32,
-        end: i32,
-    ) -> Self {
+    pub fn with_range(id: String, filename: String, chain: char, start: i32, end: i32) -> Self {
         let start = BrookhavenNumber::new(start, chain, ' ');
         let end = BrookhavenNumber::new(end, chain, ' ');
         Self {
@@ -491,7 +499,11 @@ pub fn parse_pdb_with_options<P: AsRef<Path>>(
     domain.pdb_file = path.to_string_lossy().to_string();
 
     let target_chain = chain.unwrap_or('?');
-    let mut found_chain = if target_chain == '?' { None } else { Some(target_chain) };
+    let mut found_chain = if target_chain == '?' {
+        None
+    } else {
+        Some(target_chain)
+    };
     let mut seq_num = 0i32;
 
     // Track last residue to avoid duplicates from alternate conformations
@@ -758,9 +770,24 @@ pub fn parse_pdb_coords<P: AsRef<Path>>(
         };
 
         // Parse coordinates
-        let x: f64 = line.get(30..38).unwrap_or("0.0").trim().parse().unwrap_or(0.0);
-        let y: f64 = line.get(38..46).unwrap_or("0.0").trim().parse().unwrap_or(0.0);
-        let z: f64 = line.get(46..54).unwrap_or("0.0").trim().parse().unwrap_or(0.0);
+        let x: f64 = line
+            .get(30..38)
+            .unwrap_or("0.0")
+            .trim()
+            .parse()
+            .unwrap_or(0.0);
+        let y: f64 = line
+            .get(38..46)
+            .unwrap_or("0.0")
+            .trim()
+            .parse()
+            .unwrap_or(0.0);
+        let z: f64 = line
+            .get(46..54)
+            .unwrap_or("0.0")
+            .trim()
+            .parse()
+            .unwrap_or(0.0);
 
         let residue = Residue::new(seq_num, pdb_num, aa, Coord3::new(x, y, z));
         residues.push(residue);
@@ -1020,12 +1047,32 @@ pub fn parse_dssp_coords<P: AsRef<Path>>(
         };
 
         // Parse accessibility
-        let accessibility: f64 = line.get(34..38).unwrap_or("0").trim().parse().unwrap_or(0.0);
+        let accessibility: f64 = line
+            .get(34..38)
+            .unwrap_or("0")
+            .trim()
+            .parse()
+            .unwrap_or(0.0);
 
         // Parse coordinates (columns 116-122, 123-129, 130-136)
-        let x: f64 = line.get(115..122).unwrap_or("0.0").trim().parse().unwrap_or(0.0);
-        let y: f64 = line.get(122..129).unwrap_or("0.0").trim().parse().unwrap_or(0.0);
-        let z: f64 = line.get(129..136).unwrap_or("0.0").trim().parse().unwrap_or(0.0);
+        let x: f64 = line
+            .get(115..122)
+            .unwrap_or("0.0")
+            .trim()
+            .parse()
+            .unwrap_or(0.0);
+        let y: f64 = line
+            .get(122..129)
+            .unwrap_or("0.0")
+            .trim()
+            .parse()
+            .unwrap_or(0.0);
+        let z: f64 = line
+            .get(129..136)
+            .unwrap_or("0.0")
+            .trim()
+            .parse()
+            .unwrap_or(0.0);
 
         let pdb_num = if ins == ' ' {
             res_num_str.to_string()
@@ -1225,11 +1272,17 @@ fn parse_domain_extended(lines: &[String], path: &Path) -> StampResult<(DomainSp
 
     // Find the opening brace
     let brace_start = combined.find('{').ok_or_else(|| {
-        StampError::DomainFile(format!("Missing '{{' in domain specification: {}", combined))
+        StampError::DomainFile(format!(
+            "Missing '{{' in domain specification: {}",
+            combined
+        ))
     })?;
 
     let brace_end = combined.find('}').ok_or_else(|| {
-        StampError::DomainFile(format!("Missing '}}' in domain specification: {}", combined))
+        StampError::DomainFile(format!(
+            "Missing '}}' in domain specification: {}",
+            combined
+        ))
     })?;
 
     // Parse filename and ID (before the brace)
@@ -1266,12 +1319,14 @@ fn parse_domain_extended(lines: &[String], path: &Path) -> StampResult<(DomainSp
 
         if values.len() >= 12 {
             let rotation = RotationMatrix::new(
-                values[0], values[1], values[2],
-                values[4], values[5], values[6],
-                values[8], values[9], values[10],
+                values[0], values[1], values[2], values[4], values[5], values[6], values[8],
+                values[9], values[10],
             );
             let translation = Vec3::new(values[3], values[7], values[11]);
-            spec.transform = Some(Transform { rotation, translation });
+            spec.transform = Some(Transform {
+                rotation,
+                translation,
+            });
             has_transform = true;
         }
     }
@@ -1285,7 +1340,11 @@ fn parse_domain_extended(lines: &[String], path: &Path) -> StampResult<(DomainSp
                 continue;
             }
             // Check if this could be a transformation line (starts with a number)
-            if trimmed.chars().next().map_or(false, |c| c.is_ascii_digit() || c == '-' || c == '.') {
+            if trimmed
+                .chars()
+                .next()
+                .map_or(false, |c| c.is_ascii_digit() || c == '-' || c == '.')
+            {
                 matrix_lines.push(trimmed.to_string());
                 consumed += 1;
                 if matrix_lines.len() >= 3 {
@@ -1305,12 +1364,14 @@ fn parse_domain_extended(lines: &[String], path: &Path) -> StampResult<(DomainSp
 
             if values.len() >= 12 {
                 let rotation = RotationMatrix::new(
-                    values[0], values[1], values[2],
-                    values[4], values[5], values[6],
-                    values[8], values[9], values[10],
+                    values[0], values[1], values[2], values[4], values[5], values[6], values[8],
+                    values[9], values[10],
                 );
                 let translation = Vec3::new(values[3], values[7], values[11]);
-                spec.transform = Some(Transform { rotation, translation });
+                spec.transform = Some(Transform {
+                    rotation,
+                    translation,
+                });
                 has_transform = true;
             }
         }
@@ -1435,10 +1496,7 @@ fn parse_domain_descriptor(descriptor: &str) -> StampResult<Vec<DomainSegment>> 
 /// # Errors
 ///
 /// Returns an error if the file cannot be read or any domain cannot be loaded.
-pub fn load_domains<P: AsRef<Path>>(
-    path: P,
-    base_dir: Option<&Path>,
-) -> StampResult<Vec<Domain>> {
+pub fn load_domains<P: AsRef<Path>>(path: P, base_dir: Option<&Path>) -> StampResult<Vec<Domain>> {
     let (specs, _) = parse_domain_file(&path)?;
 
     let mut domains = Vec::with_capacity(specs.len());
@@ -1500,7 +1558,11 @@ pub fn write_pdb<P: AsRef<Path>>(
             "ATOM  {:5}  CA  {:3} {:1}{:4}    {:8.3}{:8.3}{:8.3}  1.00  0.00           C",
             i + 1,
             one_to_three(residue.aa),
-            if domain.chain == ' ' { '_' } else { domain.chain },
+            if domain.chain == ' ' {
+                '_'
+            } else {
+                domain.chain
+            },
             residue.pdb_num,
             coord.x,
             coord.y,
@@ -1541,10 +1603,19 @@ pub fn write_pdb_multi<P: AsRef<Path>>(
     let mut atom_num = 1usize;
 
     for (domain_idx, domain) in domains.iter().enumerate() {
-        let chain = chain_ids.chars().nth(domain_idx % chain_ids.len()).unwrap_or('X');
+        let chain = chain_ids
+            .chars()
+            .nth(domain_idx % chain_ids.len())
+            .unwrap_or('X');
         let transform = transforms.and_then(|t| t.get(domain_idx));
 
-        writeln!(file, "REMARK   Domain {}: {} (chain {})", domain_idx + 1, domain.id, chain)?;
+        writeln!(
+            file,
+            "REMARK   Domain {}: {} (chain {})",
+            domain_idx + 1,
+            domain.id,
+            chain
+        )?;
 
         for residue in &domain.residues {
             let coord = match transform {
@@ -1623,11 +1694,17 @@ pub fn write_domain_file<P: AsRef<Path>>(
                     write!(file, "ALL")?;
                 }
                 DomainSelectionType::Chain => {
-                    let cid = if segment.start.cid == ' ' { '_' } else { segment.start.cid };
+                    let cid = if segment.start.cid == ' ' {
+                        '_'
+                    } else {
+                        segment.start.cid
+                    };
                     write!(file, "CHAIN {}", cid)?;
                 }
                 DomainSelectionType::Range => {
-                    write!(file, "{} TO {}",
+                    write!(
+                        file,
+                        "{} TO {}",
                         segment.start.to_string_display(),
                         segment.end.to_string_display()
                     )?;
@@ -1668,7 +1745,11 @@ pub fn write_domain_file<P: AsRef<Path>>(
         }
     }
 
-    log::debug!("Wrote {} domain specifications to {}", specs.len(), path.display());
+    log::debug!(
+        "Wrote {} domain specifications to {}",
+        specs.len(),
+        path.display()
+    );
 
     Ok(())
 }
@@ -1846,11 +1927,17 @@ mod tests {
         assert_eq!(spec.segments[0].selection_type, DomainSelectionType::All);
 
         let with_chain = DomainSpec::with_chain("test".to_string(), "test.pdb".to_string(), 'A');
-        assert_eq!(with_chain.segments[0].selection_type, DomainSelectionType::Chain);
+        assert_eq!(
+            with_chain.segments[0].selection_type,
+            DomainSelectionType::Chain
+        );
 
         let with_range =
             DomainSpec::with_range("test".to_string(), "test.pdb".to_string(), 'A', 1, 100);
-        assert_eq!(with_range.segments[0].selection_type, DomainSelectionType::Range);
+        assert_eq!(
+            with_range.segments[0].selection_type,
+            DomainSelectionType::Range
+        );
     }
 
     #[test]

@@ -14,6 +14,9 @@ license = "MIT"
 repository = "https://github.com/msinclair/rivet"
 description = "Rivet - Structural Alignment of Multiple Proteins"
 rust-version = "1.70"
+readme = "README.md"
+keywords = ["bioinformatics", "protein", "structure", "alignment", "stamp"]
+categories = ["science", "algorithms"]
 
 [workspace.dependencies]
 # Core dependencies
@@ -40,10 +43,18 @@ missing_docs = "warn"
 pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
 cargo = { level = "warn", priority = -1 }
-# Allow common patterns
+# Allow common patterns in scientific/numerical code
 module_name_repetitions = "allow"
 must_use_candidate = "allow"
 missing_errors_doc = "allow"
+similar_names = "allow"  # i1, j1, i2, j2 are intentional in alignment code
+too_many_lines = "allow"  # Complex algorithms may need long functions
+inconsistent_digit_grouping = "allow"  # Mathematical constants
+unreadable_literal = "allow"  # Mathematical constants
+collapsible_if = "allow"  # Sometimes clearer when separate
+missing_panics_doc = "allow"
+suspicious_op_assign_impl = "allow"  # Used intentionally in matrix operations
+cognitive_complexity = "allow"  # Complex algorithms are complex
 
 [profile.release]
 lto = true

@@ -68,7 +68,8 @@ impl HierarchicalClustering {
     #[must_use]
     pub fn cluster(&mut self) -> TreeNode {
         // Initialize each item as a leaf node
-        let mut nodes: Vec<Option<TreeNode>> = (0..self.n).map(|i| Some(TreeNode::leaf(i))).collect();
+        let mut nodes: Vec<Option<TreeNode>> =
+            (0..self.n).map(|i| Some(TreeNode::leaf(i))).collect();
         let mut active: Vec<bool> = vec![true; self.n];
 
         // Merge until one cluster remains
@@ -92,7 +93,11 @@ impl HierarchicalClustering {
         }
 
         // Find and return the root
-        nodes.into_iter().flatten().next().expect("Root should exist")
+        nodes
+            .into_iter()
+            .flatten()
+            .next()
+            .expect("Root should exist")
     }
 
     /// Finds the pair with minimum distance among active clusters.
@@ -144,8 +149,7 @@ impl HierarchicalClustering {
                     let size_k = self.sizes[k] as f64;
                     let total = size_i as f64 + size_j as f64 + size_k;
                     let d_ij = self.distances[i][j];
-                    ((size_i as f64 + size_k) * d_ik
-                        + (size_j as f64 + size_k) * d_jk
+                    ((size_i as f64 + size_k) * d_ik + (size_j as f64 + size_k) * d_jk
                         - size_k * d_ij)
                         / total
                 }
@@ -173,7 +177,11 @@ impl HierarchicalClustering {
 pub fn cut_tree(tree: &TreeNode, threshold: f64) -> Vec<Vec<usize>> {
     match tree {
         TreeNode::Leaf(idx) => vec![vec![*idx]],
-        TreeNode::Internal { left, right, height } => {
+        TreeNode::Internal {
+            left,
+            right,
+            height,
+        } => {
             if *height <= threshold {
                 // Keep this cluster together
                 vec![tree.leaves()]
@@ -259,7 +267,12 @@ fn cophenetic_distances(tree: &TreeNode, n: usize) -> Vec<Vec<f64>> {
 
 /// Recursively computes cophenetic distances.
 fn compute_cophenetic_recursive(node: &TreeNode, distances: &mut [Vec<f64>], _current_height: f64) {
-    if let TreeNode::Internal { left, right, height } = node {
+    if let TreeNode::Internal {
+        left,
+        right,
+        height,
+    } = node
+    {
         let left_leaves = left.leaves();
         let right_leaves = right.leaves();
 

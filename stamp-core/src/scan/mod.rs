@@ -447,7 +447,10 @@ pub fn scan_pair(
 
     // Sliding window scan
     let slide = config.slide.max(1);
-    let max_start = target_coords_orig.len().saturating_sub(overlap_len / 2).max(1);
+    let max_start = target_coords_orig
+        .len()
+        .saturating_sub(overlap_len / 2)
+        .max(1);
 
     let mut best_score = f64::NEG_INFINITY;
     let mut best_result: Option<PairwiseResult> = None;
@@ -468,7 +471,8 @@ pub fn scan_pair(
 
         // Extract overlapping portions for initial superposition
         let query_overlap: Vec<Coord3> = query_coords[..current_overlap].to_vec();
-        let target_overlap: Vec<Coord3> = target_coords_orig[target_start..target_start + current_overlap].to_vec();
+        let target_overlap: Vec<Coord3> =
+            target_coords_orig[target_start..target_start + current_overlap].to_vec();
 
         // Compute initial superposition of overlapping portions
         let (initial_transform, _initial_rmsd) = superpose(&query_overlap, &target_overlap)?;
@@ -599,7 +603,11 @@ pub fn scan_database(
             .unwrap_or(std::cmp::Ordering::Equal)
     });
 
-    log::info!("Found {} hits above cutoff {}", results.len(), config.scan_cut);
+    log::info!(
+        "Found {} hits above cutoff {}",
+        results.len(),
+        config.scan_cut
+    );
 
     Ok(results)
 }
@@ -898,11 +906,7 @@ mod tests {
                 i as i32,
                 i.to_string(),
                 'A',
-                Coord3::new(
-                    t.cos() * 5.0 + offset,
-                    t.sin() * 5.0,
-                    i as f64 * 1.5,
-                ),
+                Coord3::new(t.cos() * 5.0 + offset, t.sin() * 5.0, i as f64 * 1.5),
             ));
         }
         domain
@@ -944,9 +948,30 @@ mod tests {
     #[test]
     fn test_compute_z_scores() {
         let mut hits = vec![
-            ScanHit::new("a".to_string(), AlignmentResult { score: 5.0, ..Default::default() }, 1),
-            ScanHit::new("b".to_string(), AlignmentResult { score: 3.0, ..Default::default() }, 2),
-            ScanHit::new("c".to_string(), AlignmentResult { score: 1.0, ..Default::default() }, 3),
+            ScanHit::new(
+                "a".to_string(),
+                AlignmentResult {
+                    score: 5.0,
+                    ..Default::default()
+                },
+                1,
+            ),
+            ScanHit::new(
+                "b".to_string(),
+                AlignmentResult {
+                    score: 3.0,
+                    ..Default::default()
+                },
+                2,
+            ),
+            ScanHit::new(
+                "c".to_string(),
+                AlignmentResult {
+                    score: 1.0,
+                    ..Default::default()
+                },
+                3,
+            ),
         ];
 
         compute_z_scores(&mut hits);
@@ -990,10 +1015,7 @@ mod tests {
 
     #[test]
     fn test_roughfit_two_domains() {
-        let mut domains = vec![
-            make_test_domain("ref", 20),
-            make_test_domain("mobile", 20),
-        ];
+        let mut domains = vec![make_test_domain("ref", 20), make_test_domain("mobile", 20)];
         let params = Parameters::default();
 
         let results = roughfit(&mut domains, &params).unwrap();
@@ -1144,10 +1166,7 @@ mod tests {
         let params = Parameters::default();
         let scanner = DatabaseScanner::new(params);
 
-        let queries = vec![
-            make_test_domain("q1", 20),
-            make_test_domain("q2", 20),
-        ];
+        let queries = vec![make_test_domain("q1", 20), make_test_domain("q2", 20)];
 
         let results = batch_scan(&queries, &scanner).unwrap();
 

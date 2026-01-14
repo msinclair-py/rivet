@@ -244,10 +244,7 @@ mod tests {
 
     #[test]
     fn test_rmsd_identical() {
-        let points = vec![
-            Coord3::new(1.0, 2.0, 3.0),
-            Coord3::new(4.0, 5.0, 6.0),
-        ];
+        let points = vec![Coord3::new(1.0, 2.0, 3.0), Coord3::new(4.0, 5.0, 6.0)];
         let r = rmsd(points.iter(), points.iter());
         assert!(r.abs() < 1e-10);
     }

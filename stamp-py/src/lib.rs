@@ -436,7 +436,11 @@ impl PyParameters {
     fn __repr__(&self) -> String {
         format!(
             "Parameters(n_passes={}, e1={}, e2={}, gap_open={}, use_secondary={})",
-            self.inner.n_passes, self.inner.e1, self.inner.e2, self.inner.pen_gap, self.inner.use_secondary
+            self.inner.n_passes,
+            self.inner.e1,
+            self.inner.e2,
+            self.inner.pen_gap,
+            self.inner.use_secondary
         )
     }
 }
@@ -482,9 +486,15 @@ impl PyTransform {
         }
 
         let rotation_matrix = stamp_core::types::RotationMatrix::new(
-            rot[[0, 0]], rot[[0, 1]], rot[[0, 2]],
-            rot[[1, 0]], rot[[1, 1]], rot[[1, 2]],
-            rot[[2, 0]], rot[[2, 1]], rot[[2, 2]],
+            rot[[0, 0]],
+            rot[[0, 1]],
+            rot[[0, 2]],
+            rot[[1, 0]],
+            rot[[1, 1]],
+            rot[[1, 2]],
+            rot[[2, 0]],
+            rot[[2, 1]],
+            rot[[2, 2]],
         );
 
         // Handle both (3,) and (3,1) or (1,3) shapes
@@ -493,7 +503,9 @@ impl PyTransform {
         } else if trans.shape().len() == 1 || trans.shape()[1] >= 3 {
             (trans[[0, 0]], trans[[0, 1]], trans[[0, 2]])
         } else {
-            return Err(PyValueError::new_err("Translation must be 3-element vector"));
+            return Err(PyValueError::new_err(
+                "Translation must be 3-element vector",
+            ));
         };
 
         let translation_vec = stamp_core::types::Vec3::new(tx, ty, tz);
@@ -603,9 +615,7 @@ impl PyTransform {
     fn __repr__(&self) -> String {
         format!(
             "Transform(translation=[{:.3}, {:.3}, {:.3}])",
-            self.inner.translation.x,
-            self.inner.translation.y,
-            self.inner.translation.z
+            self.inner.translation.x, self.inner.translation.y, self.inner.translation.z
         )
     }
 }
@@ -887,7 +897,7 @@ impl PyScanHit {
 /// Raises:
 ///     ValueError: If alignment fails.
 #[pyfunction]
-#[pyo3(name = "pairwise_align", signature = (domain1, domain2, params=None))]
+#[pyo3(name = "pairwise_align", signature = (domain1, domain2, params=None, scan_mode=None, slide=None))]
 fn pairwise_align(
     domain1: &PyDomain,
     domain2: &PyDomain,
@@ -1183,19 +1193,19 @@ fn centroid(coords: PyReadonlyArray2<f64>) -> PyResult<(f64, f64, f64)> {
 // Module definition
 // ============================================================================
 
-/// STAMP - Structural Alignment of Multiple Proteins
+/// Rivet - Structural Alignment of Multiple Proteins (STAMP implementation)
 ///
 /// This module provides Python bindings to the STAMP structural alignment
 /// library, enabling pairwise and multiple structure alignment.
 ///
 /// Example:
-///     >>> import stamp
-///     >>> d1 = stamp.Domain.from_pdb("1abc.pdb", chain='A')
-///     >>> d2 = stamp.Domain.from_pdb("2def.pdb", chain='A')
-///     >>> result = stamp.pairwise_align(d1, d2)
+///     >>> import rivet
+///     >>> d1 = rivet.Domain.from_pdb("1abc.pdb", chain='A')
+///     >>> d2 = rivet.Domain.from_pdb("2def.pdb", chain='A')
+///     >>> result = rivet.pairwise_align(d1, d2)
 ///     >>> print(f"RMSD: {result.rmsd:.2f}")
 #[pymodule]
-fn stamp(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn rivet(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Classes
     m.add_class::<PyDomain>()?;
     m.add_class::<PyParameters>()?;

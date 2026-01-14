@@ -74,9 +74,7 @@ pub fn multiple_align(
 
     if n == 1 {
         let mut result = MultipleAlignmentResult::new(1);
-        result.columns = (0..domains[0].len())
-            .map(|i| vec![Some(i)])
-            .collect();
+        result.columns = (0..domains[0].len()).map(|i| vec![Some(i)]).collect();
         result.core_positions = (0..domains[0].len()).collect();
         return Ok(result);
     }
@@ -310,7 +308,8 @@ pub fn refine_alignment(
         let mut mob_coords = Vec::new();
 
         for &col in &result.core_positions {
-            if let (Some(ref_idx), Some(mob_idx)) = (result.columns[col][0], result.columns[col][i]) {
+            if let (Some(ref_idx), Some(mob_idx)) = (result.columns[col][0], result.columns[col][i])
+            {
                 if let (Some(ref_res), Some(mob_res)) = (
                     reference.residues.get(ref_idx),
                     domain.residues.get(mob_idx),

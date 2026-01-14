@@ -63,7 +63,13 @@ fn bench_smith_waterman(c: &mut Criterion) {
     let scores: Vec<Vec<f64>> = (0..50)
         .map(|i| {
             (0..50)
-                .map(|j| if i == j { 5.0 } else { -1.0 + 0.1 * (i as f64 - j as f64).abs() })
+                .map(|j| {
+                    if i == j {
+                        5.0
+                    } else {
+                        -1.0 + 0.1 * (i as f64 - j as f64).abs()
+                    }
+                })
                 .collect()
         })
         .collect();

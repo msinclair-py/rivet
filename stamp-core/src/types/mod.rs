@@ -238,7 +238,7 @@ impl Default for Parameters {
             pen_gap: 3.0,
             use_secondary: true,
             e1: 2.0,
-            e2: 0.5,
+            e2: 5.0,
             cutoff_dist: 10.0,
             max_iter: 100,
             convergence: 0.01,

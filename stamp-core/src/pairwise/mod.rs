@@ -21,13 +21,11 @@
 //! - Russell & Barton, Proteins 14:309-323 (1992)
 //! - Rossmann & Argos, J. Mol. Biol. 105:75-95 (1976)
 
-use crate::alignment::{
-    smith_waterman, smith_waterman_corner_cut, traceback, SwResult,
-};
+use crate::alignment::{smith_waterman, smith_waterman_corner_cut, traceback, SwResult};
 use crate::math::superpose;
 use crate::scoring::{
     calculate_probability_matrix, calculate_probability_matrix_cc, domain_to_coords,
-    sequence_identity, RossmannParams, ProbabilityMatrix,
+    sequence_identity, ProbabilityMatrix, RossmannParams,
 };
 use crate::types::{AlignmentResult, Coord3, Domain, Parameters, StampResult, Transform};
 
@@ -364,7 +362,11 @@ pub fn pairfit(
         // Check termination conditions (after first iteration)
         if iteration > 1 {
             if score_diff <= config.score_tol {
-                log::debug!("Converged: score_diff={:.4}% <= tol={:.4}%", score_diff, config.score_tol);
+                log::debug!(
+                    "Converged: score_diff={:.4}% <= tol={:.4}%",
+                    score_diff,
+                    config.score_tol
+                );
                 break;
             }
             if iteration > config.max_iter {
@@ -372,7 +374,11 @@ pub fn pairfit(
                 break;
             }
             if state.n_fit < config.min_fit.max(3) {
-                log::debug!("Too few fitted residues: {} < {}", state.n_fit, config.min_fit.max(3));
+                log::debug!(
+                    "Too few fitted residues: {} < {}",
+                    state.n_fit,
+                    config.min_fit.max(3)
+                );
                 break;
             }
             if config.require_score_rise && !score_rise {
@@ -389,13 +395,7 @@ pub fn pairfit(
         };
 
         // Run pairpath to get alignment, score, transformation
-        let path_result = pairpath(
-            domain1,
-            &coords1,
-            &state.coords2,
-            &prob_matrix,
-            config,
-        )?;
+        let path_result = pairpath(domain1, &coords1, &state.coords2, &prob_matrix, config)?;
 
         // Update state from path result
         let old_score = state.score;
@@ -439,7 +439,8 @@ pub fn pairfit(
             }
 
             // Accumulate transformation: cumulative = new * cumulative
-            state.cumulative_transform = update_transform(new_transform, &state.cumulative_transform);
+            state.cumulative_transform =
+                update_transform(new_transform, &state.cumulative_transform);
         }
 
         // Safety limit for first iteration
@@ -640,7 +641,11 @@ fn pairpath(
         // Store per-residue score
         if i_adj < residue_scores.len() {
             residue_scores[i_adj] = if config.boolean_mode {
-                if prob_score > 0 { 1.0 } else { 0.0 }
+                if prob_score > 0 {
+                    1.0
+                } else {
+                    0.0
+                }
             } else {
                 prob_score as f64 / config.precision as f64
             };
@@ -697,9 +702,17 @@ fn pairpath(
 
     // Determine start and end positions
     let start1 = best_path.start.i.saturating_sub(1);
-    let end1 = best_path.end.i.saturating_sub(1).min(len_a.saturating_sub(1));
+    let end1 = best_path
+        .end
+        .i
+        .saturating_sub(1)
+        .min(len_a.saturating_sub(1));
     let start2 = best_path.start.j.saturating_sub(1);
-    let end2 = best_path.end.j.saturating_sub(1).min(len_b.saturating_sub(1));
+    let end2 = best_path
+        .end
+        .j
+        .saturating_sub(1)
+        .min(len_b.saturating_sub(1));
 
     Ok(PathResult {
         transform,
@@ -843,7 +856,8 @@ fn calculate_identities(
         }
 
         // Count equivalent secondary structure elements
-        if in_sec1 && in_sec2
+        if in_sec1
+            && in_sec2
             && score >= second_cutoff
             && neighbors >= 2
             && (nsec1 != last_matched_sec1 || nsec2 != last_matched_sec2)
@@ -927,8 +941,8 @@ pub fn pairfit_two_pass(
     let config1 = match params {
         Some(p) => {
             let mut cfg = PairwiseConfig::from_parameters(p);
-            cfg.e1 = 2.0;  // Coarse E1
-            cfg.e2 = 5.0;  // Coarse E2
+            cfg.e1 = 2.0; // Coarse E1
+            cfg.e2 = 5.0; // Coarse E2
             cfg
         }
         None => PairwiseConfig::first_pass(),
@@ -952,8 +966,8 @@ pub fn pairfit_two_pass(
     let config2 = match params {
         Some(p) => {
             let mut cfg = PairwiseConfig::from_parameters(p);
-            cfg.e1 = 1.0;  // Fine E1
-            cfg.e2 = 2.5;  // Fine E2
+            cfg.e1 = 1.0; // Fine E1
+            cfg.e2 = 2.5; // Fine E2
             cfg
         }
         None => PairwiseConfig::second_pass(),
@@ -1250,11 +1264,7 @@ mod tests {
 
     #[test]
     fn test_align_pair_basic() {
-        let coords = vec![
-            (0.0, 0.0, 0.0),
-            (3.8, 0.0, 0.0),
-            (7.6, 0.0, 0.0),
-        ];
+        let coords = vec![(0.0, 0.0, 0.0), (3.8, 0.0, 0.0), (7.6, 0.0, 0.0)];
         let d1 = make_test_domain("test1", coords.clone());
         let d2 = make_test_domain("test2", coords);
         let params = Parameters::default();
@@ -1268,12 +1278,24 @@ mod tests {
     fn test_similarity_matrix() {
         let results = vec![
             vec![
-                AlignmentResult { score: 1.0, ..Default::default() },
-                AlignmentResult { score: 0.8, ..Default::default() },
+                AlignmentResult {
+                    score: 1.0,
+                    ..Default::default()
+                },
+                AlignmentResult {
+                    score: 0.8,
+                    ..Default::default()
+                },
             ],
             vec![
-                AlignmentResult { score: 0.8, ..Default::default() },
-                AlignmentResult { score: 1.0, ..Default::default() },
+                AlignmentResult {
+                    score: 0.8,
+                    ..Default::default()
+                },
+                AlignmentResult {
+                    score: 1.0,
+                    ..Default::default()
+                },
             ],
         ];
         let sim = similarity_matrix(&results);
@@ -1285,12 +1307,24 @@ mod tests {
     fn test_rmsd_matrix() {
         let results = vec![
             vec![
-                AlignmentResult { rmsd: 0.0, ..Default::default() },
-                AlignmentResult { rmsd: 2.5, ..Default::default() },
+                AlignmentResult {
+                    rmsd: 0.0,
+                    ..Default::default()
+                },
+                AlignmentResult {
+                    rmsd: 2.5,
+                    ..Default::default()
+                },
             ],
             vec![
-                AlignmentResult { rmsd: 2.5, ..Default::default() },
-                AlignmentResult { rmsd: 0.0, ..Default::default() },
+                AlignmentResult {
+                    rmsd: 2.5,
+                    ..Default::default()
+                },
+                AlignmentResult {
+                    rmsd: 0.0,
+                    ..Default::default()
+                },
             ],
         ];
         let rmsds = rmsd_matrix(&results);

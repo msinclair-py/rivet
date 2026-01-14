@@ -342,8 +342,18 @@ mod tests {
     #[test]
     fn test_ss_content() {
         let mut domain = Domain::new("test".to_string());
-        domain.residues.push(Residue::new(0, "1".to_string(), 'A', Coord3::new(0.0, 0.0, 0.0)));
-        domain.residues.push(Residue::new(1, "2".to_string(), 'A', Coord3::new(1.0, 0.0, 0.0)));
+        domain.residues.push(Residue::new(
+            0,
+            "1".to_string(),
+            'A',
+            Coord3::new(0.0, 0.0, 0.0),
+        ));
+        domain.residues.push(Residue::new(
+            1,
+            "2".to_string(),
+            'A',
+            Coord3::new(1.0, 0.0, 0.0),
+        ));
         domain.residues[0].sec_struct = 'H';
         domain.residues[1].sec_struct = 'E';
 

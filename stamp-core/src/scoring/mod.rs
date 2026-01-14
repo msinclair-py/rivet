@@ -503,19 +503,25 @@ pub fn calculate_probability_matrix(
         // Boolean mode: values are 0 or 1 based on threshold
         for i in 0..len_a {
             for j in 0..len_b {
-                let result = compute_rossmann_at_position(
-                    &atoms1, &atoms2, i, j, len_a, len_b, params,
+                let result =
+                    compute_rossmann_at_position(&atoms1, &atoms2, i, j, len_a, len_b, params);
+                matrix.set(
+                    i,
+                    j,
+                    if result.pij >= params.bool_cut {
+                        1.0
+                    } else {
+                        0.0
+                    },
                 );
-                matrix.set(i, j, if result.pij >= params.bool_cut { 1.0 } else { 0.0 });
             }
         }
     } else if params.compute_stats {
         // Compute statistics from matrix and normalize
         for i in 0..len_a {
             for j in 0..len_b {
-                let result = compute_rossmann_at_position(
-                    &atoms1, &atoms2, i, j, len_a, len_b, params,
-                );
+                let result =
+                    compute_rossmann_at_position(&atoms1, &atoms2, i, j, len_a, len_b, params);
                 matrix.set(i, j, result.pij);
             }
         }
@@ -524,9 +530,8 @@ pub fn calculate_probability_matrix(
         // Use fixed normalization parameters
         for i in 0..len_a {
             for j in 0..len_b {
-                let result = compute_rossmann_at_position(
-                    &atoms1, &atoms2, i, j, len_a, len_b, params,
-                );
+                let result =
+                    compute_rossmann_at_position(&atoms1, &atoms2, i, j, len_a, len_b, params);
                 matrix.set(i, j, result.pij);
             }
         }
@@ -582,7 +587,8 @@ pub fn calculate_probability_matrix_cc(
     let fn_val = (len_a + 1) as f64;
     let fm_val = (len_b + 1) as f64;
     let sqrt2 = std::f64::consts::SQRT_2;
-    let fcut = (fk1 / sqrt2) * ((fm_val / fn_val + fn_val / fm_val) / (fm_val * fm_val + fn_val * fn_val).sqrt());
+    let fcut = (fk1 / sqrt2)
+        * ((fm_val / fn_val + fn_val / fm_val) / (fm_val * fm_val + fn_val * fn_val).sqrt());
 
     let mut lstart: usize = 0;
 
@@ -609,12 +615,18 @@ pub fn calculate_probability_matrix_cc(
             }
 
             // Compute probability for this position
-            let result = compute_rossmann_at_position(
-                &atoms1, &atoms2, i, j, len_a, len_b, params,
-            );
+            let result = compute_rossmann_at_position(&atoms1, &atoms2, i, j, len_a, len_b, params);
 
             if params.boolean_mode {
-                matrix.set(i, j, if result.pij >= params.bool_cut { 1.0 } else { 0.0 });
+                matrix.set(
+                    i,
+                    j,
+                    if result.pij >= params.bool_cut {
+                        1.0
+                    } else {
+                        0.0
+                    },
+                );
             } else {
                 matrix.set(i, j, result.pij);
             }
@@ -1070,11 +1082,11 @@ pub fn ca_distance(p1: &Coord3, p2: &Coord3) -> f64 {
 #[must_use]
 pub fn ss_similarity(ss1: char, ss2: char) -> f64 {
     match (ss1, ss2) {
-        ('H', 'H') => 1.0,             // Helix-helix
-        ('E', 'E') => 1.0,             // Strand-strand
-        ('C', 'C') => 0.5,             // Coil-coil (less informative)
+        ('H', 'H') => 1.0,              // Helix-helix
+        ('E', 'E') => 1.0,              // Strand-strand
+        ('C', 'C') => 0.5,              // Coil-coil (less informative)
         ('H', 'E') | ('E', 'H') => 0.0, // Helix-strand mismatch
-        _ => 0.25,                     // Other combinations
+        _ => 0.25,                      // Other combinations
     }
 }
 
@@ -1252,10 +1264,7 @@ mod tests {
             Coord3::new(3.8, 0.0, 0.0),
             Coord3::new(7.6, 0.0, 0.0),
         ];
-        let coords2 = vec![
-            Coord3::new(0.0, 0.0, 0.0),
-            Coord3::new(3.8, 0.0, 0.0),
-        ];
+        let coords2 = vec![Coord3::new(0.0, 0.0, 0.0), Coord3::new(3.8, 0.0, 0.0)];
         let params = RossmannParams::default();
 
         let matrix = calculate_probability_matrix(&coords1, &coords2, &params);
@@ -1279,7 +1288,7 @@ mod tests {
 
         let mut params = RossmannParams::default();
         params.cc_factor = 5.0; // Very aggressive corner cutting
-        params.cc_add = false;  // Don't add length difference
+        params.cc_add = false; // Don't add length difference
 
         let matrix = calculate_probability_matrix_cc(&coords1, &coords2, &params);
 
@@ -1368,11 +1377,7 @@ mod tests {
 
     #[test]
     fn test_internal_distances() {
-        let domain = make_test_domain(vec![
-            (0.0, 0.0, 0.0),
-            (3.8, 0.0, 0.0),
-            (7.6, 0.0, 0.0),
-        ]);
+        let domain = make_test_domain(vec![(0.0, 0.0, 0.0), (3.8, 0.0, 0.0), (7.6, 0.0, 0.0)]);
         let dist = internal_distances(&domain);
         assert!((dist[0][1] - 3.8).abs() < 1e-10);
         assert!((dist[0][2] - 7.6).abs() < 1e-10);
@@ -1415,8 +1420,12 @@ mod tests {
         let n2 = Coord3::new(7.6, 0.5, 0.0);
 
         let result_direct = rossmann_argos_direct(
-            Some(&p1), &c1, Some(&n1),
-            Some(&p2), &c2, Some(&n2),
+            Some(&p1),
+            &c1,
+            Some(&n1),
+            Some(&p2),
+            &c2,
+            Some(&n2),
             &params,
         );
 
