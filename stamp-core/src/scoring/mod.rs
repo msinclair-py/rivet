@@ -738,7 +738,9 @@ pub fn calculate_probability_matrix_parallel(
     let values: Vec<f64> = if params.boolean_mode {
         (0..len_a)
             .into_par_iter()
-            .flat_map(|i| {
+            .flat_map_iter(|i| {
+                let atoms1 = atoms1.clone();
+                let atoms2 = atoms2.clone();
                 (0..len_b).map(move |j| {
                     let result =
                         compute_rossmann_at_position(&atoms1, &atoms2, i, j, len_a, len_b, params);
@@ -753,7 +755,9 @@ pub fn calculate_probability_matrix_parallel(
     } else {
         (0..len_a)
             .into_par_iter()
-            .flat_map(|i| {
+            .flat_map_iter(|i| {
+                let atoms1 = atoms1.clone();
+                let atoms2 = atoms2.clone();
                 (0..len_b).map(move |j| {
                     compute_rossmann_at_position(&atoms1, &atoms2, i, j, len_a, len_b, params).pij
                 })
@@ -845,8 +849,10 @@ pub fn calculate_probability_matrix_cc_parallel(
     // Parallel row computation with corner-cutting
     let values: Vec<f64> = (0..len_a)
         .into_par_iter()
-        .flat_map(|i| {
+        .flat_map_iter(|i| {
             let (j_start, j_end) = valid_ranges[i];
+            let atoms1 = atoms1.clone();
+            let atoms2 = atoms2.clone();
             (0..len_b).map(move |j| {
                 if j >= j_start && j < j_end {
                     let result =
