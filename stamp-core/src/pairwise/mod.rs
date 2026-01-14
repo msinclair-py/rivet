@@ -24,9 +24,9 @@
 use crate::alignment::{smith_waterman, smith_waterman_corner_cut, traceback, SwResult};
 use crate::math::superpose;
 use crate::scoring::{
-    calculate_probability_matrix, calculate_probability_matrix_cc,
-    calculate_probability_matrix_auto, calculate_probability_matrix_cc_auto,
-    domain_to_coords, sequence_identity, ProbabilityMatrix, RossmannParams,
+    calculate_probability_matrix, calculate_probability_matrix_auto,
+    calculate_probability_matrix_cc, calculate_probability_matrix_cc_auto, domain_to_coords,
+    sequence_identity, ProbabilityMatrix, RossmannParams,
 };
 use crate::types::{AlignmentResult, Coord3, Domain, Parameters, StampResult, Transform};
 

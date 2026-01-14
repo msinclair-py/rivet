@@ -234,13 +234,17 @@ fn bench_rmsd(c: &mut Criterion) {
         let soa1 = CoordsSoA::from_coords(&coords1);
         let soa2 = CoordsSoA::from_coords(&coords2);
 
-        group.bench_with_input(BenchmarkId::new("aos", size), &(&coords1, &coords2), |b, (c1, c2)| {
-            b.iter(|| rmsd(black_box(c1.iter()), black_box(c2.iter())))
-        });
+        group.bench_with_input(
+            BenchmarkId::new("aos", size),
+            &(&coords1, &coords2),
+            |b, (c1, c2)| b.iter(|| rmsd(black_box(c1.iter()), black_box(c2.iter()))),
+        );
 
-        group.bench_with_input(BenchmarkId::new("soa", size), &(&soa1, &soa2), |b, (s1, s2)| {
-            b.iter(|| rmsd_soa(black_box(*s1), black_box(*s2)))
-        });
+        group.bench_with_input(
+            BenchmarkId::new("soa", size),
+            &(&soa1, &soa2),
+            |b, (s1, s2)| b.iter(|| rmsd_soa(black_box(*s1), black_box(*s2))),
+        );
     }
 
     group.finish();
@@ -259,13 +263,17 @@ fn bench_kabsch(c: &mut Criterion) {
         let soa1 = CoordsSoA::from_coords(&coords1);
         let soa2 = CoordsSoA::from_coords(&coords2);
 
-        group.bench_with_input(BenchmarkId::new("aos", size), &(&coords1, &coords2), |b, (c1, c2)| {
-            b.iter(|| kabsch(black_box(c1.iter()), black_box(c2.iter())))
-        });
+        group.bench_with_input(
+            BenchmarkId::new("aos", size),
+            &(&coords1, &coords2),
+            |b, (c1, c2)| b.iter(|| kabsch(black_box(c1.iter()), black_box(c2.iter()))),
+        );
 
-        group.bench_with_input(BenchmarkId::new("soa", size), &(&soa1, &soa2), |b, (s1, s2)| {
-            b.iter(|| kabsch_soa(black_box(s1), black_box(s2)))
-        });
+        group.bench_with_input(
+            BenchmarkId::new("soa", size),
+            &(&soa1, &soa2),
+            |b, (s1, s2)| b.iter(|| kabsch_soa(black_box(s1), black_box(s2))),
+        );
     }
 
     group.finish();
@@ -284,13 +292,17 @@ fn bench_superpose(c: &mut Criterion) {
         let soa1 = CoordsSoA::from_coords(&coords1);
         let soa2 = CoordsSoA::from_coords(&coords2);
 
-        group.bench_with_input(BenchmarkId::new("aos", size), &(&coords1, &coords2), |b, (c1, c2)| {
-            b.iter(|| superpose(black_box(*c1), black_box(*c2)))
-        });
+        group.bench_with_input(
+            BenchmarkId::new("aos", size),
+            &(&coords1, &coords2),
+            |b, (c1, c2)| b.iter(|| superpose(black_box(*c1), black_box(*c2))),
+        );
 
-        group.bench_with_input(BenchmarkId::new("soa", size), &(&soa1, &soa2), |b, (s1, s2)| {
-            b.iter(|| superpose_soa(black_box(s1), black_box(s2)))
-        });
+        group.bench_with_input(
+            BenchmarkId::new("soa", size),
+            &(&soa1, &soa2),
+            |b, (s1, s2)| b.iter(|| superpose_soa(black_box(s1), black_box(s2))),
+        );
     }
 
     group.finish();
@@ -381,13 +393,17 @@ fn bench_smith_waterman(c: &mut Criterion) {
             })
             .collect();
 
-        group.bench_with_input(BenchmarkId::new("fill_traceback", size), &scores, |b, scores| {
-            b.iter(|| {
-                let mut sw = SmithWaterman::new(*size, *size, &params);
-                sw.fill(black_box(scores));
-                sw.traceback()
-            })
-        });
+        group.bench_with_input(
+            BenchmarkId::new("fill_traceback", size),
+            &scores,
+            |b, scores| {
+                b.iter(|| {
+                    let mut sw = SmithWaterman::new(*size, *size, &params);
+                    sw.fill(black_box(scores));
+                    sw.traceback()
+                })
+            },
+        );
     }
 
     group.finish();
@@ -409,9 +425,7 @@ fn bench_probability_matrix(c: &mut Criterion) {
             BenchmarkId::new("sequential", size),
             &(&coords1, &coords2),
             |b, (c1, c2)| {
-                b.iter(|| {
-                    calculate_probability_matrix(black_box(*c1), black_box(*c2), &params)
-                })
+                b.iter(|| calculate_probability_matrix(black_box(*c1), black_box(*c2), &params))
             },
         );
     }

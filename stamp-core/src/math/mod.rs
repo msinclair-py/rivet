@@ -441,6 +441,257 @@ pub fn squared_distance_matrix_flat(points1: &[Coord3], points2: &[Coord3]) -> V
     distances
 }
 
+// ============================================================================
+// TM-score calculation
+// ============================================================================
+
+/// Computes the TM-score normalization factor d0.
+///
+/// d0 is a length-dependent scale that makes TM-score length-independent.
+/// For proteins with L < 22, a minimum value is used to avoid negative d0.
+///
+/// Formula: d0 = 1.24 * ∛(L - 15) - 1.8
+#[inline]
+#[must_use]
+pub fn tm_d0(length: usize) -> f64 {
+    // For very short proteins, use minimum d0 to avoid issues
+    if length < 22 {
+        return 0.5; // Minimum practical d0
+    }
+    1.24 * ((length as f64 - 15.0).cbrt()) - 1.8
+}
+
+/// Computes TM-score between two aligned structures.
+///
+/// TM-score is a length-independent metric for protein structural similarity
+/// that ranges from 0 to 1:
+/// - TM-score > 0.5: Generally indicates same fold
+/// - TM-score > 0.17: Above random similarity threshold
+/// - TM-score = 1.0: Perfect structural match
+///
+/// # Arguments
+///
+/// * `aligned_distances` - Squared distances between aligned residue pairs
+///   after optimal superposition (NOT square rooted)
+/// * `target_length` - Length of the target/reference protein for normalization
+///
+/// # Returns
+///
+/// TM-score value in range [0, 1]
+///
+/// # Formula
+///
+/// TM-score = (1/L_target) * Σ(1 / (1 + (d_i / d_0)²))
+///
+/// Where d_0 = 1.24 * ∛(L_target - 15) - 1.8
+#[must_use]
+pub fn tm_score(aligned_distances_sq: &[f64], target_length: usize) -> f64 {
+    if aligned_distances_sq.is_empty() || target_length == 0 {
+        return 0.0;
+    }
+
+    let d0 = tm_d0(target_length);
+    let d0_sq = d0 * d0;
+
+    let sum: f64 = aligned_distances_sq
+        .iter()
+        .map(|&d_sq| 1.0 / (1.0 + d_sq / d0_sq))
+        .sum();
+
+    sum / target_length as f64
+}
+
+/// Computes TM-score from aligned coordinate pairs.
+///
+/// This is a convenience function that computes distances and TM-score together.
+///
+/// # Arguments
+///
+/// * `coords1` - Coordinates of aligned residues in structure 1
+/// * `coords2` - Coordinates of aligned residues in structure 2 (after superposition)
+/// * `target_length` - Length of the target protein for normalization
+///   (typically the length of the shorter protein)
+#[must_use]
+pub fn tm_score_from_coords(coords1: &[Coord3], coords2: &[Coord3], target_length: usize) -> f64 {
+    assert_eq!(
+        coords1.len(),
+        coords2.len(),
+        "Aligned coordinate sets must have equal length"
+    );
+
+    let distances_sq: Vec<f64> = coords1
+        .iter()
+        .zip(coords2.iter())
+        .map(|(c1, c2)| distance_squared(c1, c2))
+        .collect();
+
+    tm_score(&distances_sq, target_length)
+}
+
+/// Computes TM-score using SoA coordinate layout.
+///
+/// More efficient version using Structure-of-Arrays layout.
+#[must_use]
+pub fn tm_score_soa(coords1: &CoordsSoA, coords2: &CoordsSoA, target_length: usize) -> f64 {
+    assert_eq!(
+        coords1.len(),
+        coords2.len(),
+        "Aligned coordinate sets must have equal length"
+    );
+
+    if coords1.is_empty() || target_length == 0 {
+        return 0.0;
+    }
+
+    let d0 = tm_d0(target_length);
+    let d0_sq = d0 * d0;
+
+    let mut sum = 0.0;
+    for i in 0..coords1.len() {
+        let dx = coords1.x[i] - coords2.x[i];
+        let dy = coords1.y[i] - coords2.y[i];
+        let dz = coords1.z[i] - coords2.z[i];
+        let d_sq = dx * dx + dy * dy + dz * dz;
+        sum += 1.0 / (1.0 + d_sq / d0_sq);
+    }
+
+    sum / target_length as f64
+}
+
+/// Computes both TM-score and RMSD simultaneously from aligned coordinates.
+///
+/// This is more efficient than computing them separately when both are needed.
+///
+/// # Returns
+///
+/// Tuple of (tm_score, rmsd)
+#[must_use]
+pub fn tm_score_and_rmsd(
+    coords1: &[Coord3],
+    coords2: &[Coord3],
+    target_length: usize,
+) -> (f64, f64) {
+    assert_eq!(
+        coords1.len(),
+        coords2.len(),
+        "Aligned coordinate sets must have equal length"
+    );
+
+    if coords1.is_empty() || target_length == 0 {
+        return (0.0, 0.0);
+    }
+
+    let d0 = tm_d0(target_length);
+    let d0_sq = d0 * d0;
+
+    let mut tm_sum = 0.0;
+    let mut rmsd_sum = 0.0;
+
+    for (c1, c2) in coords1.iter().zip(coords2.iter()) {
+        let d_sq = distance_squared(c1, c2);
+        tm_sum += 1.0 / (1.0 + d_sq / d0_sq);
+        rmsd_sum += d_sq;
+    }
+
+    let n = coords1.len();
+    let tm = tm_sum / target_length as f64;
+    let rmsd_val = (rmsd_sum / n as f64).sqrt();
+
+    (tm, rmsd_val)
+}
+
+/// Result of TM-score alignment with all metrics.
+#[derive(Debug, Clone)]
+pub struct TmAlignResult {
+    /// TM-score normalized by the first structure's length.
+    pub tm_score_1: f64,
+    /// TM-score normalized by the second structure's length.
+    pub tm_score_2: f64,
+    /// RMSD of aligned residues.
+    pub rmsd: f64,
+    /// Number of aligned residues.
+    pub n_aligned: usize,
+    /// Length of first structure.
+    pub length_1: usize,
+    /// Length of second structure.
+    pub length_2: usize,
+}
+
+impl TmAlignResult {
+    /// Returns the average TM-score (mean of both normalizations).
+    #[must_use]
+    pub fn tm_score_avg(&self) -> f64 {
+        (self.tm_score_1 + self.tm_score_2) / 2.0
+    }
+
+    /// Returns the maximum TM-score (more conservative comparison).
+    #[must_use]
+    pub fn tm_score_max(&self) -> f64 {
+        self.tm_score_1.max(self.tm_score_2)
+    }
+
+    /// Returns the minimum TM-score (more stringent comparison).
+    #[must_use]
+    pub fn tm_score_min(&self) -> f64 {
+        self.tm_score_1.min(self.tm_score_2)
+    }
+}
+
+/// Computes full TM-alignment metrics with both normalizations.
+///
+/// # Arguments
+///
+/// * `coords1` - Aligned coordinates from structure 1
+/// * `coords2` - Aligned coordinates from structure 2 (after superposition)
+/// * `length_1` - Total length of structure 1
+/// * `length_2` - Total length of structure 2
+#[must_use]
+pub fn tm_align_full(
+    coords1: &[Coord3],
+    coords2: &[Coord3],
+    length_1: usize,
+    length_2: usize,
+) -> TmAlignResult {
+    assert_eq!(coords1.len(), coords2.len());
+
+    let n_aligned = coords1.len();
+    if n_aligned == 0 {
+        return TmAlignResult {
+            tm_score_1: 0.0,
+            tm_score_2: 0.0,
+            rmsd: 0.0,
+            n_aligned: 0,
+            length_1,
+            length_2,
+        };
+    }
+
+    let d0_1 = tm_d0(length_1);
+    let d0_sq_1 = d0_1 * d0_1;
+    let d0_2 = tm_d0(length_2);
+    let d0_sq_2 = d0_2 * d0_2;
+
+    let mut tm_sum_1 = 0.0;
+    let mut tm_sum_2 = 0.0;
+    let mut rmsd_sum = 0.0;
+
+    for (c1, c2) in coords1.iter().zip(coords2.iter()) {
+        let d_sq = distance_squared(c1, c2);
+        tm_sum_1 += 1.0 / (1.0 + d_sq / d0_sq_1);
+        tm_sum_2 += 1.0 / (1.0 + d_sq / d0_sq_2);
+        rmsd_sum += d_sq;
+    }
+
+    TmAlignResult {
+        tm_score_1: tm_sum_1 / length_1 as f64,
+        tm_score_2: tm_sum_2 / length_2 as f64,
+        rmsd: (rmsd_sum / n_aligned as f64).sqrt(),
+        n_aligned,
+        length_1,
+        length_2,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -522,5 +773,81 @@ mod tests {
         let p1 = Coord3::new(0.0, 0.0, 0.0);
         let p2 = Coord3::new(3.0, 4.0, 0.0);
         assert!((distance(&p1, &p2) - 5.0).abs() < 1e-10);
+    }
+
+    // TM-score tests
+    #[test]
+    fn test_tm_d0() {
+        // Test d0 calculation for various lengths
+        // For L=100: d0 = 1.24 * (85)^(1/3) - 1.8 ≈ 3.65
+        let d0_100 = tm_d0(100);
+        assert!((d0_100 - 3.65).abs() < 0.1);
+
+        // For L=200: d0 = 1.24 * (185)^(1/3) - 1.8 ≈ 5.27
+        let d0_200 = tm_d0(200);
+        assert!((d0_200 - 5.27).abs() < 0.1);
+
+        // For short proteins, should return minimum d0
+        let d0_short = tm_d0(15);
+        assert!((d0_short - 0.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_tm_score_perfect() {
+        // Perfect alignment (zero distances) should give TM-score = n_aligned/L_target
+        let distances_sq = vec![0.0; 100];
+        let tm = tm_score(&distances_sq, 100);
+        assert!((tm - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_tm_score_partial() {
+        // Partial alignment: 50 residues aligned out of 100
+        let distances_sq = vec![0.0; 50];
+        let tm = tm_score(&distances_sq, 100);
+        assert!((tm - 0.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_tm_score_with_distances() {
+        // With non-zero distances, TM-score should be less than n_aligned/L_target
+        let d0 = tm_d0(100);
+        // If all distances equal d0, each term is 1/(1+1) = 0.5
+        let distances_sq = vec![d0 * d0; 100];
+        let tm = tm_score(&distances_sq, 100);
+        assert!((tm - 0.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_tm_score_from_coords_identical() {
+        let coords: Vec<Coord3> = (0..50).map(|i| Coord3::new(i as f64, 0.0, 0.0)).collect();
+        let tm = tm_score_from_coords(&coords, &coords, 50);
+        assert!((tm - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_tm_align_full() {
+        let coords1: Vec<Coord3> = (0..50).map(|i| Coord3::new(i as f64, 0.0, 0.0)).collect();
+        let coords2: Vec<Coord3> = (0..50)
+            .map(|i| Coord3::new(i as f64 + 0.5, 0.0, 0.0))
+            .collect();
+
+        let result = tm_align_full(&coords1, &coords2, 100, 80);
+
+        // Check that both TM-scores are computed
+        assert!(result.tm_score_1 > 0.0 && result.tm_score_1 < 1.0);
+        assert!(result.tm_score_2 > 0.0 && result.tm_score_2 < 1.0);
+        // Shorter normalization length gives higher TM-score
+        assert!(result.tm_score_2 > result.tm_score_1);
+        assert_eq!(result.n_aligned, 50);
+        assert!((result.rmsd - 0.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_tm_score_and_rmsd() {
+        let coords1: Vec<Coord3> = (0..50).map(|i| Coord3::new(i as f64, 0.0, 0.0)).collect();
+        let (tm, rmsd_val) = tm_score_and_rmsd(&coords1, &coords1, 50);
+        assert!((tm - 1.0).abs() < 1e-10);
+        assert!(rmsd_val.abs() < 1e-10);
     }
 }

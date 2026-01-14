@@ -1578,11 +1578,7 @@ mod tests {
 
         // Check that we have some non-zero values
         // Flat storage: iterate directly over values
-        let non_zero_count: usize = matrix
-            .values
-            .iter()
-            .filter(|&&v| v.abs() > 1e-10)
-            .count();
+        let non_zero_count: usize = matrix.values.iter().filter(|&&v| v.abs() > 1e-10).count();
 
         assert!(non_zero_count > 0, "Should have some computed values");
         // With very aggressive CC on large matrices, corners should be zeros

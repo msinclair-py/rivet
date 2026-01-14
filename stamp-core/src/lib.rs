@@ -7,7 +7,8 @@
 //!
 //! - Pairwise structural alignment using the Rossmann-Argos scoring scheme
 //! - Multiple structure alignment via tree-guided progressive methods
-//! - Hierarchical clustering of protein structures
+//! - Hierarchical clustering of protein structures (UPGMA and Neighbor-Joining)
+//! - TM-score calculation for length-independent alignment quality assessment
 //! - Database scanning capabilities
 //!
 //! ## Example
@@ -15,26 +16,31 @@
 //! ```rust,ignore
 //! use stamp_core::types::Domain;
 //! use stamp_core::pairwise::align_pair;
+//! use stamp_core::math::tm_score_from_coords;
 //!
 //! let domain1 = Domain::from_pdb("1abc.pdb")?;
 //! let domain2 = Domain::from_pdb("2def.pdb")?;
 //!
 //! let result = align_pair(&domain1, &domain2, &Default::default())?;
 //! println!("RMSD: {:.2} A", result.rmsd);
+//!
+//! // Compute TM-score for length-independent comparison
+//! // let tm = tm_score_from_coords(&aligned_coords1, &aligned_coords2, target_len);
 //! ```
 //!
 //! ## Module Overview
 //!
 //! - [`types`]: Core data structures (Domain, Parameters, AlignmentResult)
-//! - [`math`]: Linear algebra operations, Kabsch algorithm, transformations
+//! - [`math`]: Linear algebra operations, Kabsch algorithm, TM-score, transformations
 //! - [`io`]: PDB/DSSP file parsing, domain file handling
 //! - [`alignment`]: Smith-Waterman dynamic programming, path tracing
 //! - [`scoring`]: Rossmann-Argos scoring matrices and functions
-//! - [`clustering`]: Hierarchical clustering algorithms
+//! - [`clustering`]: Hierarchical clustering (UPGMA, Neighbor-Joining)
 //! - [`pairwise`]: Pairwise structural alignment
 //! - [`treewise`]: Tree-guided multiple structure alignment
 //! - [`secondary`]: Secondary structure handling and assignment
 //! - [`scan`]: Database scanning operations
+//! - [`matrix`]: Efficient matrix types with contiguous memory layout
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -54,6 +60,8 @@ pub mod types;
 /// Prelude module for convenient imports.
 pub mod prelude {
     pub use crate::alignment::SmithWaterman;
+    pub use crate::clustering::{build_tree, NeighborJoining, TreeMethod};
+    pub use crate::math::{tm_align_full, tm_score, tm_score_from_coords, TmAlignResult};
     pub use crate::pairwise::align_pair;
     pub use crate::scoring::RossmannArgos;
     pub use crate::types::{AlignmentResult, Domain, Parameters, Transform};
