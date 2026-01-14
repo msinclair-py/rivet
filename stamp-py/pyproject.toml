@@ -72,9 +72,8 @@ strip = true
 # Compatibility settings
 compatibility = "manylinux2014"
 
-# Include additional files in the wheel
+# Include additional files in the sdist (README.md is handled by project.readme)
 include = [
-    { path = "README.md", format = "sdist" },
     { path = "LICENSE", format = "sdist" },
 ]
 
