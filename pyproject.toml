@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "rivet-rs"
-version = "0.1.0"
+version = "0.1.1"
 description = "Rivet - Structural Alignment of Multiple Proteins"
 readme = "README.md"
 license-file = "LICENSE"
