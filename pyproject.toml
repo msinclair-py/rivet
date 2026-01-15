@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "rivet-rs"
-version = "0.1.2"
+version = "0.1.3"
 description = "Rivet - Structural Alignment of Multiple Proteins"
 readme = "README.md"
 license = "MIT"
@@ -46,6 +46,7 @@ python-source = "stamp-py/python"
 module-name = "rivet"
 features = ["pyo3/extension-module"]
 strip = true
+include = [{ path = "LICENSE", format = "sdist" }]
 
 [tool.pytest.ini_options]
 minversion = "7.0"
